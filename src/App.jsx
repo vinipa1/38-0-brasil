@@ -2002,6 +2002,11 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
 }
 
 
+const PIX_KEY = "bcf96c05-b212-4d13-951a-7e17ee943372";
+const PIX_COPY_AND_PASTE =
+  "00020126580014br.gov.bcb.pix0136bcf96c05-b212-4d13-951a-7e17ee9433725204000053039865802BR5923Vinicius Pereira Arruda6009Sao Paulo62240520daqr17902651208140756304F853";
+const PIX_QR_CODE_SRC = "/pix-qrcode.png";
+
 function App() {
   const [theme, setTheme] = useState("light");
   const themeClass = theme === "dark" ? "theme-dark" : "theme-light";
@@ -2027,6 +2032,9 @@ function App() {
   const [shareImageUrl, setShareImageUrl] = useState("");
   const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
+  const [copiedPixKey, setCopiedPixKey] = useState(false);
+  const [copiedPixCode, setCopiedPixCode] = useState(false);
+  const [pixCopyMessage, setPixCopyMessage] = useState("");
 
   const databaseStats = useMemo(() => {
     const teamsWithPlayers = getTeamsWithPlayers();
@@ -2363,6 +2371,31 @@ ${lineupText}`;
       }, 1800);
     } catch {
       setCopiedResult(false);
+    }
+  }
+
+  async function copySupportPix(value, type) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setPixCopyMessage("");
+
+      if (type === "key") {
+        setCopiedPixKey(true);
+
+        window.setTimeout(() => {
+          setCopiedPixKey(false);
+        }, 1800);
+
+        return;
+      }
+
+      setCopiedPixCode(true);
+
+      window.setTimeout(() => {
+        setCopiedPixCode(false);
+      }, 1800);
+    } catch {
+      setPixCopyMessage("Não consegui copiar automaticamente. Selecione e copie manualmente.");
     }
   }
 
@@ -3689,7 +3722,7 @@ ${lineupText}`;
           <div className="rounded-[2.25rem] border border-slate-900/10 bg-white/85 p-6 text-left shadow-[0_18px_50px_rgba(15,23,42,0.10)] sm:p-8 md:p-10">
             <div className="force-dark-text mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-950">
               <Trophy size={18} />
-              Apoia-se
+              Apoie!
             </div>
 
             <h1 className="max-w-3xl text-4xl font-black tracking-tight md:text-6xl">
@@ -3702,40 +3735,83 @@ ${lineupText}`;
               a base atualizada e a criar novas funções para o jogo.
             </p>
 
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
-              <div className="rounded-3xl border border-slate-900/10 bg-[#f7f0df] p-5">
-                <Users className="mb-4 text-emerald-700" size={28} />
-                <h2 className="text-lg font-black">Mais elencos</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Revisões históricas, jogadores corretos e novas versões de clubes.
-                </p>
-              </div>
+            <div className="mt-8 overflow-hidden rounded-3xl border border-emerald-600/20 bg-emerald-300/10">
+              <div className="grid gap-0 md:grid-cols-[0.9fr_1.1fr]">
+                <div className="force-dark-text flex flex-col items-center justify-center gap-4 bg-white/70 p-6 text-center">
+                  <div className="rounded-3xl border border-slate-900/10 bg-white p-3 shadow-[0_14px_30px_rgba(15,23,42,0.10)]">
+                    <img
+                      src={PIX_QR_CODE_SRC}
+                      alt="QR Code Pix para apoiar o 38–0 Brasil"
+                      className="h-56 w-56 rounded-2xl object-contain sm:h-64 sm:w-64"
+                    />
+                  </div>
 
-              <div className="rounded-3xl border border-slate-900/10 bg-[#f7f0df] p-5">
-                <LayoutGrid className="mb-4 text-emerald-700" size={28} />
-                <h2 className="text-lg font-black">Mais modos</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Ideias como rankings, filtros, conquistas e variações de draft.
-                </p>
-              </div>
+                  <p className="max-w-xs text-xs font-bold leading-relaxed text-slate-600">
+                    Escaneie o QR Code no app do seu banco. O Pix é de valor livre.
+                  </p>
+                </div>
 
-              <div className="rounded-3xl border border-slate-900/10 bg-[#f7f0df] p-5">
-                <Share2 className="mb-4 text-emerald-700" size={28} />
-                <h2 className="text-lg font-black">Mais imersão</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Artes compartilháveis, cards melhores e simulações mais completas.
-                </p>
-              </div>
-            </div>
+                <div className="p-6 sm:p-7">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-700">
+                    Apoio via Pix
+                  </p>
 
-            <div className="mt-8 rounded-3xl border border-emerald-600/20 bg-emerald-300/10 p-5">
-              <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-700">
-                Em breve
-              </p>
-              <p className="mt-2 text-base font-bold text-slate-700">
-                Aqui pode entrar seu link do Apoia-se, Pix, Catarse, Ko-fi ou qualquer
-                forma de contribuição que você quiser usar.
-              </p>
+                  <h2 className="mt-2 text-2xl font-black text-slate-950">
+                    Qualquer valor ajuda o projeto a continuar evoluindo.
+                  </h2>
+
+                  <p className="mt-3 text-sm leading-relaxed text-slate-700">
+                    Você pode escanear o QR Code ou copiar o código Pix abaixo. A chave usada é
+                    aleatória, mas o nome do recebedor aparece normalmente na confirmação do Pix.
+                  </p>
+
+                  <div className="mt-5 space-y-4">
+                    <div className="rounded-2xl border border-slate-900/10 bg-white/80 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                        Chave Pix aleatória
+                      </p>
+
+                      <p className="mt-2 break-all font-mono text-sm font-bold text-slate-800">
+                        {PIX_KEY}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => copySupportPix(PIX_KEY, "key")}
+                        className="force-dark-text mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-200"
+                      >
+                        <Copy size={16} />
+                        {copiedPixKey ? "Chave copiada!" : "Copiar chave Pix"}
+                      </button>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-900/10 bg-white/80 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                        Pix copia e cola
+                      </p>
+
+                      <p className="mt-2 max-h-24 overflow-auto break-all rounded-xl bg-slate-950/5 p-3 font-mono text-xs font-bold leading-relaxed text-slate-700">
+                        {PIX_COPY_AND_PASTE}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => copySupportPix(PIX_COPY_AND_PASTE, "code")}
+                        className="force-dark-text mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+                      >
+                        <Copy size={16} />
+                        {copiedPixCode ? "Código copiado!" : "Copiar Pix copia e cola"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {pixCopyMessage && (
+                    <p className="mt-4 rounded-2xl bg-yellow-100 px-4 py-3 text-sm font-bold text-yellow-900">
+                      {pixCopyMessage}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </section>
