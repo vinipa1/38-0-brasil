@@ -880,12 +880,16 @@ function TacticalPitch({
       <div className="absolute left-1/2 top-3 h-[10%] w-[26%] -translate-x-1/2 border-2 border-white/45 border-t-0 sm:top-4" />
       <div className="absolute left-1/2 top-3 h-[4.5%] w-[11%] -translate-x-1/2 border-2 border-white/45 border-t-0 sm:top-4" />
       <div className="absolute left-1/2 top-[12.5%] h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/55" />
-      <div className="absolute left-1/2 top-[9.3%] h-[8%] w-[18%] -translate-x-1/2 rounded-b-full border-2 border-white/45 border-t-0" />
+      <div className="absolute left-1/2 top-[9.3%] h-[4.5%] w-[18%] -translate-x-1/2 overflow-hidden">
+        <div className="absolute inset-x-0 bottom-0 h-[200%] rounded-full border-2 border-white/45" />
+      </div>
 
       <div className="absolute left-1/2 bottom-3 h-[10%] w-[26%] -translate-x-1/2 border-2 border-white/45 border-b-0 sm:bottom-4" />
       <div className="absolute left-1/2 bottom-3 h-[4.5%] w-[11%] -translate-x-1/2 border-2 border-white/45 border-b-0 sm:bottom-4" />
       <div className="absolute left-1/2 bottom-[12.5%] h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/55" />
-      <div className="absolute left-1/2 bottom-[9.3%] h-[8%] w-[18%] -translate-x-1/2 rounded-t-full border-2 border-white/45 border-b-0" />
+      <div className="absolute left-1/2 bottom-[9.3%] h-[4.5%] w-[18%] -translate-x-1/2 overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-[200%] rounded-full border-2 border-white/45" />
+      </div>
 
       <div className="absolute left-3 right-3 top-1/2 border-t-2 border-white/45 sm:left-4 sm:right-4" />
       <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/45 sm:h-36 sm:w-36" />
@@ -3468,7 +3472,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v36.2 campo com linhas reais • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v36.3 meia lua ajustada • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
