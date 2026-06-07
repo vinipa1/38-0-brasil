@@ -1735,7 +1735,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
         </div>
 
         <div style={styles.footer}>
-          <p style={styles.footerText}>Seja o campeão brasileiro.</p>
+          <p style={styles.footerText}>Monte seu XI. Simule o Brasileirão. Busque o 38–0.</p>
           <p style={styles.site}>{siteUrl || "38-0 Brasil"}</p>
         </div>
       </div>
@@ -3290,7 +3290,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v34.4 escalação sem corte • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Seja o Campeão Brasileiro!
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
