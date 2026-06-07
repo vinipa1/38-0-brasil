@@ -1412,9 +1412,57 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
     return background;
   };
 
+  const hexToRgba = (hex, alpha) => {
+    if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) {
+      return `rgba(255,250,240,${alpha})`;
+    }
+
+    const normalized = hex.replace('#', '');
+    const safeHex = normalized.length === 3
+      ? normalized.split('').map((char) => char + char).join('')
+      : normalized;
+
+    const value = Number.parseInt(safeHex, 16);
+
+    if (Number.isNaN(value)) {
+      return `rgba(255,250,240,${alpha})`;
+    }
+
+    const r = (value >> 16) & 255;
+    const g = (value >> 8) & 255;
+    const b = value & 255;
+
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  const getPlayerLabelStyle = (clubId) => {
+    const club = getClubById(clubId);
+
+    if (!club) {
+      return {
+        background: 'rgba(255,250,240,0.96)',
+        border: '1px solid rgba(15,23,42,0.08)',
+        nameColor: '#0f172a',
+        posColor: '#64748b',
+      };
+    }
+
+    const { kit } = club;
+    const primary = kit.baseColor || '#ffffff';
+    const accent = kit.accentColor || primary;
+    const textColor = kit.textColor || '#0f172a';
+
+    return {
+      background: `linear-gradient(180deg, ${hexToRgba(primary, 0.18)} 0%, ${hexToRgba(accent, 0.10)} 100%)`,
+      border: `1px solid ${hexToRgba(accent, 0.45)}`,
+      nameColor: textColor === '#ffffff' ? '#111827' : '#0f172a',
+      posColor: textColor === '#ffffff' ? '#334155' : '#64748b',
+    };
+  };
+
   const styles = {
     card: {
-      width: 880,
+      width: 920,
       boxSizing: 'border-box',
       background: 'linear-gradient(180deg, #f7f0df 0%, #efe4c9 100%)',
       color: '#0f172a',
@@ -1483,7 +1531,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontSize: 22,
       fontWeight: 950,
       letterSpacing: -0.5,
-      lineHeight: 1.15,
+      lineHeight: 1.18,
     },
     statGrid: {
       display: 'grid',
@@ -1601,12 +1649,12 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       overflow: 'hidden',
       border: '1px solid rgba(15, 23, 42, 0.08)',
       background: '#062b1f',
-      padding: 14,
+      padding: 16,
       boxSizing: 'border-box',
     },
     pitch: {
       position: 'relative',
-      height: 500,
+      height: 560,
       borderRadius: 24,
       overflow: 'hidden',
       background: 'radial-gradient(circle at center, rgba(16,185,129,0.22), rgba(6,20,13,0.98))',
@@ -1625,8 +1673,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: 6,
-      width: 86,
+      gap: 8,
+      width: 102,
       textAlign: 'center',
     },
     playerBall: {
@@ -1634,8 +1682,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: 40,
-      height: 40,
+      width: 48,
+      height: 48,
       borderRadius: '999px',
       border: '2px solid rgba(255,255,255,0.26)',
       boxShadow: '0 10px 20px rgba(15,23,42,0.28)',
@@ -1653,39 +1701,36 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      minWidth: 26,
-      height: 26,
-      padding: '0 6px',
+      minWidth: 30,
+      height: 30,
+      padding: '0 7px',
       borderRadius: '999px',
       background: 'rgba(255,255,255,0.92)',
       color: '#0f172a',
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: 950,
       lineHeight: 1,
       boxShadow: '0 4px 12px rgba(15,23,42,0.22)',
     },
     playerLabel: {
       minWidth: 0,
-      maxWidth: 86,
+      width: 100,
+      maxWidth: 100,
       borderRadius: 12,
-      padding: '6px 7px',
-      background: 'rgba(255,250,240,0.94)',
-      border: '1px solid rgba(110,231,183,0.24)',
+      padding: '7px 8px',
       boxSizing: 'border-box',
       boxShadow: '0 8px 18px rgba(15,23,42,0.18)',
     },
     playerName: {
       margin: 0,
-      color: '#0f172a',
-      fontSize: 10,
+      fontSize: 11,
       fontWeight: 950,
-      lineHeight: 1.15,
+      lineHeight: 1.18,
       wordBreak: 'break-word',
     },
     playerPos: {
-      margin: '3px 0 0',
-      color: '#64748b',
-      fontSize: 8,
+      margin: '4px 0 0',
+      fontSize: 9,
       fontWeight: 900,
       letterSpacing: 1.1,
       textTransform: 'uppercase',
@@ -1810,6 +1855,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                 const playerName = getShortPlayerName(item.player?.name || item.position);
                 const clubId = item.team?.clubId;
                 const background = getKitBackground(clubId);
+                const labelStyle = getPlayerLabelStyle(clubId);
 
                 return (
                   <div
@@ -1825,9 +1871,15 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                       <div style={styles.playerOverall}>{item.player?.ovr || '—'}</div>
                     </div>
 
-                    <div style={styles.playerLabel}>
-                      <p style={styles.playerName}>{playerName}</p>
-                      <p style={styles.playerPos}>{item.position}</p>
+                    <div
+                      style={{
+                        ...styles.playerLabel,
+                        background: labelStyle.background,
+                        border: labelStyle.border,
+                      }}
+                    >
+                      <p style={{ ...styles.playerName, color: labelStyle.nameColor }}>{playerName}</p>
+                      <p style={{ ...styles.playerPos, color: labelStyle.posColor }}>{item.position}</p>
                     </div>
                   </div>
                 );
@@ -2166,7 +2218,7 @@ ${lineupText}`;
         const clonedElement = clonedDocument.body.querySelector("[data-share-card-root]");
 
         if (clonedElement) {
-          clonedElement.style.width = "880px";
+          clonedElement.style.width = "920px";
           clonedElement.style.background = "#f7f0df";
           clonedElement.style.color = "#0f172a";
           clonedElement.style.fontFamily =
@@ -2209,6 +2261,40 @@ ${lineupText}`;
     } catch (error) {
       console.error(error);
       setShareMessage(`Erro ao gerar imagem: ${error?.message || "tente novamente."}`);
+    } finally {
+      setIsGeneratingShareImage(false);
+    }
+  }
+
+  async function copyShareImage() {
+    try {
+      setIsGeneratingShareImage(true);
+      setShareMessage("");
+
+      const blob = await createShareImageBlob();
+
+      if (!blob) {
+        setShareMessage("Não consegui gerar a imagem.");
+        return;
+      }
+
+      if (
+        navigator.clipboard?.write &&
+        typeof ClipboardItem !== "undefined"
+      ) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "image/png": blob,
+          }),
+        ]);
+        setShareMessage("Imagem copiada.");
+        return;
+      }
+
+      setShareMessage("Seu navegador não permite copiar imagem direto. Use Compartilhar.");
+    } catch (error) {
+      console.error(error);
+      setShareMessage(`Não consegui copiar a imagem: ${error?.message || "tente compartilhar."}`);
     } finally {
       setIsGeneratingShareImage(false);
     }
@@ -2773,13 +2859,13 @@ ${lineupText}`;
                 <div>
                   <h2 className="text-2xl font-black">Imagem da campanha</h2>
                   <p className="mt-1 text-sm font-bold text-slate-500">
-                    Este é o card que será baixado ou compartilhado.
+                    Este é o card que será copiado ou compartilhado.
                   </p>
                 </div>
               </div>
 
               <div className="w-full overflow-x-auto rounded-[2rem] bg-[#f7f0df] p-3">
-                <div ref={shareCardRef} data-share-card-root="true" style={{ width: "880px", background: "#f7f0df" }}>
+                <div ref={shareCardRef} data-share-card-root="true" style={{ width: "920px", background: "#f7f0df" }}>
                   <ResultShareCard
                     leagueResult={leagueResult}
                     selectedFormation={selectedFormation}
@@ -2790,23 +2876,14 @@ ${lineupText}`;
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-4">
+            <div className="mt-6 grid gap-3 md:grid-cols-3">
               <button
-                onClick={generateShareImage}
+                onClick={copyShareImage}
                 disabled={isGeneratingShareImage}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
               >
                 <Copy size={18} />
-                {isGeneratingShareImage ? "Gerando..." : "Gerar imagem"}
-              </button>
-
-              <button
-                onClick={downloadShareImage}
-                disabled={isGeneratingShareImage}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/75 px-5 py-4 font-black text-slate-950 transition hover:bg-white disabled:opacity-60"
-              >
-                <Download size={18} />
-                Baixar PNG
+                {isGeneratingShareImage ? "Copiando..." : "Copiar imagem"}
               </button>
 
               <button
@@ -2826,19 +2903,6 @@ ${lineupText}`;
                 {copiedResult ? "Copiado!" : "Copiar texto"}
               </button>
             </div>
-
-            {shareImageUrl && (
-              <div className="mt-5 rounded-2xl border border-slate-900/10 bg-white/75 p-4">
-                <p className="mb-3 text-sm font-black text-slate-700">
-                  PNG gerado:
-                </p>
-                <img
-                  src={shareImageUrl}
-                  alt="Resumo da campanha"
-                  className="w-full rounded-2xl border border-slate-900/10"
-                />
-              </div>
-            )}
 
             {shareMessage && (
               <p className="mt-3 text-sm font-bold text-slate-500">
@@ -3392,7 +3456,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Teste Alpha
+          Futebol brasileiro histórico • v35.3 botões nas cores do time fix • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
