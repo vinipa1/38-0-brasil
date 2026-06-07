@@ -1078,6 +1078,35 @@ function ThemeStyles() {
         border-color: rgba(15, 23, 42, 0.1) !important;
         color: #0f172a !important;
       }
+
+      .theme-dark .force-dark-text,
+      .theme-dark .force-dark-text * {
+        color: #0f172a !important;
+      }
+
+      .theme-dark .force-dark-text svg {
+        color: #0f172a !important;
+        stroke: #0f172a !important;
+      }
+
+      .theme-dark .force-white-text,
+      .theme-dark .force-white-text * {
+        color: #f8fafc !important;
+      }
+
+      .theme-dark .force-white-text svg {
+        color: #f8fafc !important;
+        stroke: #f8fafc !important;
+      }
+
+      .theme-dark .force-emerald-dark-text,
+      .theme-dark .force-emerald-dark-text * {
+        color: #064e3b !important;
+      }
+
+      .theme-dark .event-minute-badge {
+        color: #ffffff !important;
+      }
     `}</style>
   );
 }
@@ -1138,9 +1167,9 @@ function getPartialCampaignStats(matches) {
 }
 
 function getResultBadgeClasses(result) {
-  if (result === "V") return "bg-emerald-300 text-emerald-950";
-  if (result === "E") return "bg-yellow-300 text-yellow-950";
-  return "bg-red-400 text-red-950";
+  if (result === "V") return "force-dark-text bg-emerald-300 text-emerald-950";
+  if (result === "E") return "force-dark-text bg-yellow-300 text-yellow-950";
+  return "force-dark-text bg-red-400 text-red-950";
 }
 
 function getResultLabel(result) {
@@ -2687,7 +2716,7 @@ ${lineupText}`;
 
                   <button
                     onClick={revealNextMatch}
-                    className="mt-7 inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
+                    className="force-dark-text mt-7 inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
                   >
                     <Play size={20} fill="currentColor" />
                     Revelar 1º jogo
@@ -2748,11 +2777,11 @@ ${lineupText}`;
                                     key={`${match.round}-${event.minute}-${eventIndex}`}
                                     className={`flex items-center gap-3 rounded-2xl border px-3 py-2 ${
                                       event.isUserGoal
-                                        ? "border-emerald-600/20 bg-emerald-100/80"
+                                        ? "force-dark-text border-emerald-600/20 bg-emerald-100/80"
                                         : "border-slate-900/10 bg-white/80"
                                     }`}
                                   >
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
+                                    <span className="event-minute-badge flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
                                       {event.minute}'
                                     </span>
 
@@ -2783,7 +2812,7 @@ ${lineupText}`;
                     {isFinished ? (
                       <button
                         onClick={finishCampaignSimulation}
-                        className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
+                        className="force-dark-text inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
                       >
                         <Trophy size={20} />
                         Ver classificação final
@@ -2791,7 +2820,7 @@ ${lineupText}`;
                     ) : (
                       <button
                         onClick={revealNextMatch}
-                        className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
+                        className="force-dark-text inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
                       >
                         <Play size={20} fill="currentColor" />
                         Próximo jogo
@@ -2806,7 +2835,7 @@ ${lineupText}`;
               <div className="rounded-[2rem] border border-slate-900/10 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-lg font-black">Tabela parcial</h2>
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                  <span className="force-dark-text rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-950">
                     Rod. {revealedMatchesCount}
                   </span>
                 </div>
@@ -2817,7 +2846,7 @@ ${lineupText}`;
                       key={team.id}
                       className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm ${
                         team.isUserTeam
-                          ? "border-emerald-500/30 bg-emerald-100/90"
+                          ? "force-dark-text border-emerald-500/30 bg-emerald-100/90"
                           : "border-slate-900/10 bg-white/75"
                       }`}
                     >
@@ -2877,7 +2906,7 @@ ${lineupText}`;
           </div>
 
           <div className="mb-8">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
+            <div className="force-dark-text mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-950">
               <Trophy size={18} />
               Etapa 3 de 3
             </div>
@@ -2894,7 +2923,7 @@ ${lineupText}`;
           <div className="mb-6 overflow-hidden rounded-[2rem] border border-emerald-600/20 bg-[radial-gradient(circle_at_top,_rgba(253,186,116,0.28),_rgba(255,255,255,0.82))] p-5 shadow-[0_0_50px_rgba(16,185,129,0.08)] md:p-7">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700">
+                <p className="force-white-text text-xs font-black uppercase tracking-[0.28em] text-white">
                   Resultado final
                 </p>
 
@@ -3033,7 +3062,7 @@ ${lineupText}`;
               <button
                 onClick={copyShareImage}
                 disabled={isGeneratingShareImage}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
+                className="force-dark-text inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
               >
                 <Copy size={18} />
                 {isGeneratingShareImage ? "Copiando..." : "Copiar imagem"}
@@ -3268,7 +3297,7 @@ ${lineupText}`;
                   <div className="mt-8 grid w-full max-w-md gap-3 sm:grid-cols-2">
                     <button
                       onClick={() => runSimulation("step")}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
+                      className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
                     >
                       <Play size={20} fill="currentColor" />
                       Jogo a jogo
@@ -3365,7 +3394,7 @@ ${lineupText}`;
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                         Trocas restantes
                       </p>
-                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                      <span className="force-dark-text rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-950">
                         {rerollsRemaining}/{draftRerollLimit}
                       </span>
                     </div>
@@ -3495,7 +3524,7 @@ ${lineupText}`;
           </button>
 
           <div className="mb-10">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
+            <div className="force-dark-text mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-950">
               <LayoutGrid size={18} />
               Pré-draft
             </div>
@@ -3519,7 +3548,7 @@ ${lineupText}`;
                   onClick={() => chooseFormation(formation)}
                   className={`rounded-3xl border p-6 text-left transition ${
                     isSelected
-                      ? "border-emerald-300 bg-emerald-300/15 shadow-[0_14px_35px_rgba(16,185,129,0.12)]"
+                      ? "force-dark-text border-emerald-300 bg-emerald-300/15 shadow-[0_14px_35px_rgba(16,185,129,0.12)]"
                       : "border-slate-900/10 bg-white/80 shadow-[0_16px_45px_rgba(15,23,42,0.08)] hover:border-emerald-300/40 hover:bg-white"
                   }`}
                 >
@@ -3559,7 +3588,7 @@ ${lineupText}`;
                 onClick={() => setGameMode("normal")}
                 className={`rounded-3xl border p-5 text-left transition ${
                   gameMode === "normal"
-                    ? "border-emerald-300 bg-emerald-300/15 shadow-[0_14px_35px_rgba(16,185,129,0.12)]"
+                    ? "force-dark-text border-emerald-300 bg-emerald-300/15 shadow-[0_14px_35px_rgba(16,185,129,0.12)]"
                     : "border-slate-900/10 bg-white/75 hover:bg-white"
                 }`}
               >
@@ -3587,7 +3616,7 @@ ${lineupText}`;
                 onClick={() => setGameMode("expert")}
                 className={`rounded-3xl border p-5 text-left transition ${
                   gameMode === "expert"
-                    ? "border-emerald-300 bg-emerald-300/15 shadow-[0_14px_35px_rgba(16,185,129,0.12)]"
+                    ? "force-dark-text border-emerald-300 bg-emerald-300/15 shadow-[0_14px_35px_rgba(16,185,129,0.12)]"
                     : "border-slate-900/10 bg-white/75 hover:bg-white"
                 }`}
               >
@@ -3613,7 +3642,7 @@ ${lineupText}`;
           </div>
 
           {selectedFormation && (
-            <div className="mt-8 rounded-3xl border border-emerald-600/20 bg-emerald-300/10 p-6">
+            <div className="force-dark-text mt-8 rounded-3xl border border-emerald-600/20 bg-emerald-300/10 p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-700">
@@ -3629,7 +3658,7 @@ ${lineupText}`;
 
                 <button
                   onClick={continueToDraft}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-7 py-4 font-bold text-emerald-950 transition hover:bg-emerald-200"
+                  className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-7 py-4 font-bold text-emerald-950 transition hover:bg-emerald-200"
                 >
                   <Play size={20} fill="currentColor" />
                   Começar draft
@@ -3658,7 +3687,7 @@ ${lineupText}`;
           </button>
 
           <div className="rounded-[2.25rem] border border-slate-900/10 bg-white/85 p-6 text-left shadow-[0_18px_50px_rgba(15,23,42,0.10)] sm:p-8 md:p-10">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-700">
+            <div className="force-dark-text mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-950">
               <Trophy size={18} />
               Apoia-se
             </div>
@@ -3704,7 +3733,8 @@ ${lineupText}`;
                 Em breve
               </p>
               <p className="mt-2 text-base font-bold text-slate-700">
-                .
+                Aqui pode entrar seu link do Apoia-se, Pix, Catarse, Ko-fi ou qualquer
+                forma de contribuição que você quiser usar.
               </p>
             </div>
           </div>
@@ -3718,16 +3748,14 @@ ${lineupText}`;
         <ThemeStyles />
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
-        <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
+        <div className="force-dark-text mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-950">
           <Trophy size={18} />
          Conquiste o Brasileirão. E se conseguir? Busque o 38-0.
         </div>
 
-        <img
-          src={theme === "dark" ? "/logo-38-0-dark.png" : "/logo-38-0-light.png"}
-          alt="38-0 Brasil"
-          className="h-auto w-[650px] max-w-[88vw]"
-        />
+        <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
+          38–0 Brasil
+        </h1>
 
         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate-700 md:text-xl">
           Monte um XI com lendas de várias eras do futebol brasileiro e tente
@@ -3737,7 +3765,7 @@ ${lineupText}`;
         <div className="mt-10 flex flex-col gap-4 sm:flex-row">
           <button
             onClick={startDraft}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-7 py-4 font-bold text-emerald-950 transition hover:bg-emerald-200"
+            className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-7 py-4 font-bold text-emerald-950 transition hover:bg-emerald-200"
           >
             <Play size={20} fill="currentColor" />
             Começar Draft
