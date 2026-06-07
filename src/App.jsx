@@ -3704,8 +3704,7 @@ ${lineupText}`;
                 Em breve
               </p>
               <p className="mt-2 text-base font-bold text-slate-700">
-                Aqui pode entrar seu link do Apoia-se, Pix, Catarse, Ko-fi ou qualquer
-                forma de contribuição que você quiser usar.
+                .
               </p>
             </div>
           </div>
