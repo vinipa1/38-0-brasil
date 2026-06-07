@@ -40,6 +40,24 @@ function getRandomTeamFromList(teams) {
   return teams[Math.floor(Math.random() * teams.length)];
 }
 
+function getDraftRerollLimit(gameMode) {
+  return gameMode === "expert" ? 1 : 3;
+}
+
+function getAlternativeTeamVersions(team) {
+  if (!team) return [];
+
+  return getTeamsWithPlayers().filter(
+    (candidate) => candidate.clubId === team.clubId && candidate.id !== team.id
+  );
+}
+
+function getRandomTeamExcept(currentTeam) {
+  const teams = getTeamsWithPlayers().filter((team) => team.id !== currentTeam?.id);
+
+  return getRandomTeamFromList(teams);
+}
+
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -1957,6 +1975,7 @@ function App() {
   const [currentTeam, setCurrentTeam] = useState(null);
   const [rollingTeam, setRollingTeam] = useState(null);
   const [isRolling, setIsRolling] = useState(false);
+  const [rerollsRemaining, setRerollsRemaining] = useState(getDraftRerollLimit("normal"));
   const [pendingSelection, setPendingSelection] = useState(null);
   const [leagueResult, setLeagueResult] = useState(null);
   const [revealedMatchesCount, setRevealedMatchesCount] = useState(0);
@@ -2011,6 +2030,7 @@ function App() {
     setCurrentTeam(null);
     setRollingTeam(null);
     setIsRolling(false);
+    setRerollsRemaining(getDraftRerollLimit("normal"));
     setPendingSelection(null);
     setLeagueResult(null);
     setRevealedMatchesCount(0);
@@ -2027,6 +2047,7 @@ function App() {
     setCurrentTeam(null);
     setRollingTeam(null);
     setIsRolling(false);
+    setRerollsRemaining(getDraftRerollLimit(gameMode));
     setPendingSelection(null);
     setLeagueResult(null);
     setRevealedMatchesCount(0);
@@ -2034,10 +2055,10 @@ function App() {
     setScreen("draft");
   }
 
-  function drawTeam() {
-    if (isRolling) return;
+  function rollToTeam(finalTeam, roulettePool = getTeamsWithPlayers()) {
+    if (isRolling || !finalTeam) return;
 
-    const teamsWithPlayers = getTeamsWithPlayers();
+    const teamsWithPlayers = roulettePool.length ? roulettePool : getTeamsWithPlayers();
 
     if (!teamsWithPlayers.length) {
       setCurrentTeam(null);
@@ -2045,11 +2066,10 @@ function App() {
       return;
     }
 
-    const finalTeam = getRandomHistoricalTeamWithPlayers();
-
     setCurrentTeam(null);
     setRollingTeam(null);
     setIsRolling(false);
+    setRerollsRemaining(getDraftRerollLimit(gameMode));
     setPendingSelection(null);
     setLeagueResult(null);
     setIsRolling(true);
@@ -2080,6 +2100,43 @@ function App() {
     rollStep();
   }
 
+  function drawTeam() {
+    const teamsWithPlayers = getTeamsWithPlayers();
+
+    if (!teamsWithPlayers.length) {
+      setCurrentTeam(null);
+      setRollingTeam(null);
+      return;
+    }
+
+    setRerollsRemaining(getDraftRerollLimit(gameMode));
+    rollToTeam(getRandomHistoricalTeamWithPlayers(), teamsWithPlayers);
+  }
+
+  function rerollAnyTeam() {
+    if (isRolling || pendingSelection || !currentTeam || rerollsRemaining <= 0) return;
+
+    const teamsWithPlayers = getTeamsWithPlayers().filter((team) => team.id !== currentTeam.id);
+    const finalTeam = getRandomTeamFromList(teamsWithPlayers);
+
+    if (!finalTeam) return;
+
+    setRerollsRemaining((currentValue) => Math.max(0, currentValue - 1));
+    rollToTeam(finalTeam, teamsWithPlayers);
+  }
+
+  function rerollSameClubVersion() {
+    if (isRolling || pendingSelection || !currentTeam || rerollsRemaining <= 0) return;
+
+    const alternativeVersions = getAlternativeTeamVersions(currentTeam);
+    const finalTeam = getRandomTeamFromList(alternativeVersions);
+
+    if (!finalTeam) return;
+
+    setRerollsRemaining((currentValue) => Math.max(0, currentValue - 1));
+    rollToTeam(finalTeam, alternativeVersions);
+  }
+
   function addPlayerToSlot(player, slot, team) {
     setLineup((currentLineup) => [
       ...currentLineup,
@@ -2092,6 +2149,7 @@ function App() {
     ]);
 
     setCurrentTeam(null);
+    setRerollsRemaining(getDraftRerollLimit(gameMode));
     setPendingSelection(null);
   }
 
@@ -3099,6 +3157,9 @@ ${lineupText}`;
     const isComplete = lineup.length === selectedFormation.slots.length;
     const isExpertMode = gameMode === "expert";
     const revealDraftValues = !isExpertMode || isComplete;
+    const draftRerollLimit = getDraftRerollLimit(gameMode);
+    const alternativeVersions = getAlternativeTeamVersions(currentTeam);
+    const canUseReroll = !!currentTeam && !pendingSelection && rerollsRemaining > 0 && !isRolling;
     const hasAnyPlayerDatabase = historicalTeams.some((team) => team.players.length > 0);
 
     return (
@@ -3216,7 +3277,9 @@ ${lineupText}`;
                   <Shuffle className="mb-4 text-emerald-700" size={46} />
                   <h2 className="text-3xl font-black">Próximo elenco</h2>
                   <p className="mt-2 max-w-sm text-sm text-slate-500">
-                    Sem re-roll. Caiu, escolheu.
+                    {isExpertMode
+                      ? "Modo especialista: 1 troca por escolha."
+                      : "Modo normal: 3 trocas por escolha."}
                   </p>
 
                   <button
@@ -3244,6 +3307,41 @@ ${lineupText}`;
                         {currentTeam.era}
                       </p>
                     </div>
+                  </div>
+
+                  <div className="mb-4 rounded-3xl border border-slate-900/10 bg-white/75 p-3">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                        Trocas restantes
+                      </p>
+                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                        {rerollsRemaining}/{draftRerollLimit}
+                      </span>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        onClick={rerollAnyTeam}
+                        disabled={!canUseReroll}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Shuffle size={16} />
+                        Trocar time
+                      </button>
+
+                      <button
+                        onClick={rerollSameClubVersion}
+                        disabled={!canUseReroll || alternativeVersions.length === 0}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <RefreshCw size={16} />
+                        Outra versão
+                      </button>
+                    </div>
+
+                    <p className="mt-2 text-center text-[11px] font-bold text-slate-500">
+                      Cada botão gasta 1 troca. Escolheu jogador, as trocas resetam.
+                    </p>
                   </div>
 
                   <div
@@ -3500,7 +3598,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v36.8 bolinhas da arte proporcionais • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v37 reroll do draft • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
