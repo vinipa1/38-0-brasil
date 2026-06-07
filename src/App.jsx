@@ -1393,12 +1393,14 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontWeight: 950,
       textTransform: "uppercase",
       letterSpacing: 3,
+      lineHeight: 1.2,
     },
     brandSub: {
-      margin: "4px 0 0",
+      margin: "6px 0 0",
       color: "#64748b",
       fontSize: 12,
       fontWeight: 800,
+      lineHeight: 1.35,
     },
     positionBadge: {
       borderRadius: 999,
@@ -1408,6 +1410,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontSize: 14,
       fontWeight: 950,
       letterSpacing: 1,
+      lineHeight: 1.2,
+      flexShrink: 0,
     },
     topGrid: {
       display: "grid",
@@ -1428,6 +1432,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontSize: 22,
       fontWeight: 950,
       letterSpacing: -0.5,
+      lineHeight: 1.15,
     },
     statGrid: {
       display: "grid",
@@ -1439,6 +1444,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       borderRadius: 18,
       background: "#f7f0df",
       padding: "12px 14px",
+      minHeight: 84,
+      boxSizing: "border-box",
     },
     statLabel: {
       margin: 0,
@@ -1447,13 +1454,15 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontWeight: 950,
       textTransform: "uppercase",
       letterSpacing: 1.6,
+      lineHeight: 1.25,
     },
     statValue: {
-      margin: "6px 0 0",
+      margin: "8px 0 0",
       color: "#0f172a",
       fontSize: 20,
-      lineHeight: 1.05,
+      lineHeight: 1.18,
       fontWeight: 950,
+      whiteSpace: "pre-line",
     },
     highlightWrap: {
       display: "grid",
@@ -1465,6 +1474,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       borderRadius: 18,
       background: "linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%)",
       padding: "14px 14px",
+      minHeight: 106,
+      boxSizing: "border-box",
     },
     highlightLabel: {
       margin: 0,
@@ -1473,22 +1484,23 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontWeight: 950,
       textTransform: "uppercase",
       letterSpacing: 1.8,
+      lineHeight: 1.25,
     },
     highlightName: {
       margin: "8px 0 0",
       color: "#0f172a",
       fontSize: 17,
-      lineHeight: 1.1,
+      lineHeight: 1.2,
       fontWeight: 950,
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
+      wordBreak: "break-word",
+      overflowWrap: "anywhere",
     },
     highlightValue: {
-      margin: "5px 0 0",
+      margin: "6px 0 0",
       color: "#334155",
       fontSize: 13,
       fontWeight: 800,
+      lineHeight: 1.25,
     },
     tableList: {
       display: "flex",
@@ -1497,31 +1509,32 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       marginTop: 14,
     },
     tableItem: {
-      display: "flex",
+      display: "grid",
+      gridTemplateColumns: "1fr auto",
       alignItems: "center",
-      justifyContent: "space-between",
       gap: 12,
       borderRadius: 18,
-      padding: "11px 13px",
+      padding: "12px 14px",
       boxSizing: "border-box",
+      minHeight: 52,
     },
     tableText: {
       margin: 0,
       color: "#0f172a",
       fontSize: 13,
-      lineHeight: 1.2,
+      lineHeight: 1.25,
       fontWeight: 900,
-      maxWidth: 235,
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
+      wordBreak: "break-word",
+      overflowWrap: "anywhere",
     },
     tablePts: {
       margin: 0,
       flexShrink: 0,
       color: "#0f172a",
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: 950,
+      lineHeight: 1.2,
+      whiteSpace: "nowrap",
     },
     bottomBlock: {
       borderRadius: 26,
@@ -1544,8 +1557,9 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       gap: 12,
       borderRadius: 16,
       background: "#f7f0df",
-      padding: "10px 14px",
+      padding: "11px 14px",
       boxSizing: "border-box",
+      minHeight: 48,
     },
     position: {
       margin: 0,
@@ -1554,15 +1568,17 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontWeight: 950,
       textTransform: "uppercase",
       letterSpacing: 1.6,
+      lineHeight: 1.2,
     },
     playerName: {
       margin: 0,
       color: "#0f172a",
       fontSize: 15,
+      lineHeight: 1.24,
       fontWeight: 900,
-      whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
     },
     ovr: {
       margin: 0,
@@ -1570,6 +1586,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontSize: 18,
       fontWeight: 950,
       textAlign: "right",
+      lineHeight: 1.2,
+      whiteSpace: "nowrap",
     },
     footer: {
       marginTop: 14,
@@ -1582,12 +1600,14 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontWeight: 900,
       textTransform: "uppercase",
       letterSpacing: 2.2,
+      lineHeight: 1.35,
     },
     site: {
       margin: "6px 0 0",
       color: "#047857",
       fontSize: 14,
       fontWeight: 950,
+      lineHeight: 1.2,
     },
   };
 
@@ -1611,7 +1631,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
               <div style={styles.statCard}>
                 <p style={styles.statLabel}>Campanha</p>
                 <p style={styles.statValue}>
-                  {userStanding.wins}V {userStanding.draws}E {userStanding.losses}D
+                  {userStanding.wins}V {userStanding.draws}E{"\n"}
+                  {userStanding.losses}D
                 </p>
               </div>
 
@@ -1638,7 +1659,9 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
               <div style={styles.highlightCard}>
                 <p style={styles.highlightLabel}>Assistente</p>
                 <p style={styles.highlightName}>{leagueResult.playmaker.name}</p>
-                <p style={styles.highlightValue}>{leagueResult.playmaker.assists} assistências</p>
+                <p style={styles.highlightValue}>
+                  {leagueResult.playmaker.assists} assistências
+                </p>
               </div>
             </div>
           </div>
@@ -1659,10 +1682,10 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                     }}
                   >
                     <p style={styles.tableText}>
-                      {team.position}º {team.label} — {team.points} pts
+                      {team.position}º {team.label}
                     </p>
 
-                    <p style={styles.tablePts}>{team.points}</p>
+                    <p style={styles.tablePts}>{team.points} pts</p>
                   </div>
                 );
               })}
@@ -3240,7 +3263,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Alpha Beta
+          TESTE BETA
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
