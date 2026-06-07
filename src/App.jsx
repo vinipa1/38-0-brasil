@@ -1650,22 +1650,23 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       borderRadius: 28,
       overflow: 'hidden',
       border: '1px solid rgba(15, 23, 42, 0.08)',
-      background: '#062b1f',
-      padding: 16,
+      background: '#2f8556',
+      padding: 10,
       boxSizing: 'border-box',
     },
     pitch: {
       position: 'relative',
-      height: 560,
-      borderRadius: 24,
+      height: 620,
+      borderRadius: 20,
       overflow: 'hidden',
-      background: 'radial-gradient(circle at center, rgba(16,185,129,0.22), rgba(6,20,13,0.98))',
-      border: '2px solid rgba(167,243,208,0.12)',
+      background:
+        'repeating-linear-gradient(180deg, #2f8556 0 54px, #2b7a4d 54px 108px)',
+      border: '2px solid rgba(255,255,255,0.45)',
       boxSizing: 'border-box',
     },
     pitchLine: {
       position: 'absolute',
-      borderColor: 'rgba(167,243,208,0.18)',
+      borderColor: 'rgba(255,255,255,0.58)',
       borderStyle: 'solid',
       boxSizing: 'border-box',
     },
@@ -1675,8 +1676,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: 8,
-      width: 102,
+      gap: 5,
+      width: 98,
       textAlign: 'center',
     },
     playerBall: {
@@ -1684,18 +1685,16 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: 48,
-      height: 48,
+      width: 42,
+      height: 42,
       borderRadius: '999px',
-      border: '2px solid rgba(255,255,255,0.26)',
-      boxShadow: '0 10px 20px rgba(15,23,42,0.28)',
+      background: '#ffffff',
+      border: '3px solid #111827',
+      boxShadow: '0 8px 16px rgba(15,23,42,0.22)',
       overflow: 'hidden',
     },
     playerBallGlow: {
-      position: 'absolute',
-      inset: 0,
-      borderRadius: '999px',
-      background: 'radial-gradient(circle at 30% 25%, rgba(255,255,255,0.42), transparent 36%)',
+      display: 'none',
     },
     playerOverall: {
       position: 'relative',
@@ -1705,38 +1704,36 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       justifyContent: 'center',
       minWidth: 30,
       height: 30,
-      padding: '0 7px',
+      padding: '0 6px',
       borderRadius: '999px',
-      background: 'rgba(255,255,255,0.92)',
+      background: '#ffffff',
       color: '#0f172a',
-      fontSize: 12,
+      fontSize: 15,
       fontWeight: 950,
       lineHeight: 1,
-      boxShadow: '0 4px 12px rgba(15,23,42,0.22)',
     },
     playerLabel: {
       minWidth: 0,
-      width: 112,
-      maxWidth: 112,
-      borderRadius: 12,
-      padding: '8px 9px',
+      width: 98,
+      maxWidth: 98,
+      borderRadius: 0,
+      padding: 0,
       boxSizing: 'border-box',
-      boxShadow: '0 8px 18px rgba(15,23,42,0.18)',
+      background: 'transparent',
+      border: 'none',
+      boxShadow: 'none',
     },
     playerName: {
       margin: 0,
-      fontSize: 12,
+      color: '#ffffff',
+      fontSize: 11,
       fontWeight: 950,
-      lineHeight: 1.22,
+      lineHeight: 1.15,
       wordBreak: 'break-word',
+      textShadow: '0 2px 3px rgba(0,0,0,0.65)',
     },
     playerPos: {
-      margin: '4px 0 0',
-      fontSize: 9,
-      fontWeight: 950,
-      letterSpacing: 1.2,
-      textTransform: 'uppercase',
-      lineHeight: 1.15,
+      display: 'none',
     },
     footer: {
       marginTop: 14,
@@ -1857,8 +1854,6 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                 const playerName = getShortPlayerName(item.player?.name || item.position);
                 const clubId = item.team?.clubId;
                 const background = getKitBackground(clubId);
-                const labelStyle = getPlayerLabelStyle(clubId);
-
                 return (
                   <div
                     key={`${selectedFormation.id}-${item.id}-${item.slotIndex}`}
@@ -1873,16 +1868,9 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                       <div style={styles.playerOverall}>{item.player?.ovr || '—'}</div>
                     </div>
 
-                    <div
-                      style={{
-                        ...styles.playerLabel,
-                        background: labelStyle.background,
-                        border: labelStyle.border,
-                        borderLeft: labelStyle.borderLeft,
-                      }}
-                    >
-                      <p style={{ ...styles.playerName, color: labelStyle.nameColor }}>{playerName}</p>
-                      <p style={{ ...styles.playerPos, color: labelStyle.posColor }}>{item.position}</p>
+                    <div style={styles.playerLabel}>
+                      <p style={styles.playerName}>{playerName}</p>
+                      <p style={styles.playerPos}>{item.position}</p>
                     </div>
                   </div>
                 );
@@ -3459,7 +3447,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v35.4 nomes legíveis • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v35.5 campo estilo 7a0 • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
