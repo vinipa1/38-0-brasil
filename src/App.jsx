@@ -3723,9 +3723,11 @@ ${lineupText}`;
          Conquiste o Brasileirão. E se conseguir? Busque o 38-0.
         </div>
 
-        <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
-          38–0 Brasil
-        </h1>
+        <img
+          src={theme === "dark" ? "/logo-38-0-dark.png" : "/logo-38-0-light.png"}
+          alt="38-0 Brasil"
+          className="h-auto w-[650px] max-w-[88vw]"
+        />
 
         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate-700 md:text-xl">
           Monte um XI com lendas de várias eras do futebol brasileiro e tente
