@@ -1439,6 +1439,11 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
     return background;
   };
 
+  const getKitTextColor = (clubId) => {
+    const club = getClubById(clubId);
+    return club?.kit?.textColor || '#0f172a';
+  };
+
   const hexToRgba = (hex, alpha) => {
     if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) {
       return `rgba(255,250,240,${alpha})`;
@@ -1708,13 +1713,49 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       textAlign: 'center',
     },
     playerBallScale: {
-      width: 60,
-      height: 60,
+      width: 54,
+      height: 54,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    playerBall: {
+      position: 'relative',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 42,
+      height: 42,
+      borderRadius: '999px',
+      border: '3px solid #0f172a',
+      boxShadow: '0 8px 16px rgba(15,23,42,0.22)',
+      overflow: 'hidden',
       transform: 'scale(1.28)',
       transformOrigin: 'center center',
+    },
+    playerBallGlow: {
+      position: 'absolute',
+      inset: 0,
+      borderRadius: '999px',
+      background: 'radial-gradient(circle at 30% 25%, rgba(255,255,255,0.42), transparent 36%)',
+    },
+    playerOverall: {
+      position: 'relative',
+      zIndex: 1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 24,
+      height: 24,
+      padding: '0 5px',
+      borderRadius: '999px',
+      background: 'rgba(255,255,255,0.92)',
+      color: '#0f172a',
+      fontSize: 14,
+      fontWeight: 950,
+      lineHeight: 1,
+      boxShadow: '0 3px 10px rgba(15,23,42,0.22)',
+      border: '1px solid rgba(15,23,42,0.1)',
     },
     playerLabel: {
       minWidth: 0,
@@ -1857,6 +1898,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
               {lineupItems.map((item) => {
                 const playerName = getShortPlayerName(item.player?.name || item.position);
                 const clubId = item.team?.clubId;
+                const background = getKitBackground(clubId);
+                const textColor = getKitTextColor(clubId);
 
                 return (
                   <div
@@ -1868,7 +1911,16 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                     }}
                   >
                     <div style={styles.playerBallScale}>
-                      <KitBallIcon clubId={clubId} overall={item.player?.ovr || null} />
+                      <div style={{ ...styles.playerBall, background }}>
+                        <div style={styles.playerBallGlow} />
+                        {item.player?.ovr ? (
+                          <div style={styles.playerOverall}>{item.player.ovr}</div>
+                        ) : (
+                          <div style={{ ...styles.playerOverall, color: textColor, background: 'rgba(255,255,255,0.82)' }}>
+                            {item.team?.shortName || '?'}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div style={styles.playerLabel}>
@@ -3450,7 +3502,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v36.6 arte com mesmo padrão visual • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v36.7 arte inline com uniformes • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
