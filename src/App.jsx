@@ -1799,16 +1799,42 @@ ${lineupText}`;
   }
 
   async function createShareImageBlob() {
-    if (!shareCardRef.current) return null;
+    const element = shareCardRef.current;
 
-    const canvas = await html2canvas(shareCardRef.current, {
-      backgroundColor: null,
-      scale: 2,
+    if (!element) {
+      throw new Error("Card de compartilhamento não foi encontrado.");
+    }
+
+    // Garante que o navegador terminou de renderizar fontes/layout antes do print.
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+
+    const rect = element.getBoundingClientRect();
+
+    if (!rect.width || !rect.height) {
+      throw new Error("Card de compartilhamento está sem tamanho para captura.");
+    }
+
+    const canvas = await html2canvas(element, {
+      backgroundColor: "#f7f0df",
+      scale: Math.min(2, window.devicePixelRatio || 1.5),
       useCORS: true,
+      logging: false,
+      width: Math.ceil(rect.width),
+      height: Math.ceil(rect.height),
+      windowWidth: Math.ceil(rect.width),
+      windowHeight: Math.ceil(rect.height),
     });
 
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), "image/png", 1);
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error("Não foi possível criar o PNG."));
+          return;
+        }
+
+        resolve(blob);
+      }, "image/png", 1);
     });
   }
 
@@ -1831,8 +1857,9 @@ ${lineupText}`;
       const imageUrl = URL.createObjectURL(blob);
       setShareImageUrl(imageUrl);
       setShareMessage("Imagem gerada.");
-    } catch {
-      setShareMessage("Erro ao gerar imagem.");
+    } catch (error) {
+      console.error(error);
+      setShareMessage(`Erro ao gerar imagem: ${error?.message || "tente novamente."}`);
     } finally {
       setIsGeneratingShareImage(false);
     }
@@ -1858,8 +1885,9 @@ ${lineupText}`;
 
       URL.revokeObjectURL(imageUrl);
       setShareMessage("Imagem baixada.");
-    } catch {
-      setShareMessage("Erro ao baixar imagem.");
+    } catch (error) {
+      console.error(error);
+      setShareMessage(`Erro ao baixar imagem: ${error?.message || "tente novamente."}`);
     } finally {
       setIsGeneratingShareImage(false);
     }
@@ -1899,8 +1927,9 @@ ${lineupText}`;
       URL.revokeObjectURL(imageUrl);
 
       setShareMessage("Seu navegador não compartilha imagem direto. Baixei o PNG para você enviar no WhatsApp.");
-    } catch {
-      setShareMessage("Não consegui compartilhar. Tente baixar a imagem.");
+    } catch (error) {
+      console.error(error);
+      setShareMessage(`Não consegui compartilhar: ${error?.message || "tente baixar a imagem."}`);
     } finally {
       setIsGeneratingShareImage(false);
     }
@@ -2240,7 +2269,15 @@ ${lineupText}`;
         <ThemeStyles />
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
         <section className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
-          <div className="fixed -left-[9999px] top-0">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed left-0 top-0 z-[-1] opacity-0"
+            style={{
+              width: "900px",
+              height: "auto",
+              transform: "translateY(-120vh)",
+            }}
+          >
             <div ref={shareCardRef}>
               <ResultShareCard
                 leagueResult={leagueResult}
@@ -3000,7 +3037,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v32 imagem compartilhável • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v32.1 imagem fix • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
