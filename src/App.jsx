@@ -2002,10 +2002,23 @@ ${lineupText}`;
       useCORS: true,
       logging: false,
       removeContainer: true,
+      ignoreElements: (node) =>
+        node.tagName === "STYLE" ||
+        (node.tagName === "LINK" && node.getAttribute("rel") === "stylesheet"),
       onclone: (clonedDocument) => {
+        // Remove CSS global do Tailwind no clone para evitar erro de cor oklch().
+        clonedDocument
+          .querySelectorAll("style, link[rel='stylesheet']")
+          .forEach((node) => node.remove());
+
         const clonedElement = clonedDocument.body.querySelector("[data-share-card-root]");
+
         if (clonedElement) {
+          clonedElement.style.width = "880px";
           clonedElement.style.background = "#f7f0df";
+          clonedElement.style.color = "#0f172a";
+          clonedElement.style.fontFamily =
+            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
         }
       },
     });
@@ -2614,7 +2627,7 @@ ${lineupText}`;
               </div>
 
               <div className="w-full overflow-x-auto rounded-[2rem] bg-[#f7f0df] p-3">
-                <div ref={shareCardRef} data-share-card-root="true" className="origin-top-left">
+                <div ref={shareCardRef} data-share-card-root="true" style={{ width: "880px", background: "#f7f0df" }}>
                   <ResultShareCard
                     leagueResult={leagueResult}
                     selectedFormation={selectedFormation}
@@ -3227,7 +3240,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          BETA
+          Alpha Beta
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
