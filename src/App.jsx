@@ -1357,6 +1357,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
     return {
       position: slot.position,
       name: lineupItem?.player.name || "Vazio",
+      teamLabel: lineupItem?.team?.label || "",
       ovr: lineupItem?.player.ovr || "—",
     };
   });
@@ -1552,14 +1553,14 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
     },
     lineupItem: {
       display: "grid",
-      gridTemplateColumns: "56px 1fr 42px",
+      gridTemplateColumns: "56px minmax(0, 1fr) 42px",
       alignItems: "center",
       gap: 12,
       borderRadius: 16,
       background: "#f7f0df",
-      padding: "11px 14px",
+      padding: "12px 14px",
       boxSizing: "border-box",
-      minHeight: 48,
+      minHeight: 56,
     },
     position: {
       margin: 0,
@@ -1568,17 +1569,39 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontWeight: 950,
       textTransform: "uppercase",
       letterSpacing: 1.6,
-      lineHeight: 1.2,
+      lineHeight: 1.25,
+    },
+    playerMeta: {
+      minWidth: 0,
+      display: "flex",
+      alignItems: "baseline",
+      gap: 8,
+      overflow: "hidden",
+      flexWrap: "nowrap",
     },
     playerName: {
       margin: 0,
       color: "#0f172a",
       fontSize: 15,
-      lineHeight: 1.24,
+      lineHeight: 1.35,
       fontWeight: 900,
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
+      flexShrink: 1,
+      minWidth: 0,
+    },
+    teamLabel: {
+      margin: 0,
+      color: "#64748b",
+      fontSize: 11,
+      lineHeight: 1.3,
+      fontWeight: 800,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      flexShrink: 1,
+      minWidth: 0,
     },
     ovr: {
       margin: 0,
@@ -1586,7 +1609,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontSize: 18,
       fontWeight: 950,
       textAlign: "right",
-      lineHeight: 1.2,
+      lineHeight: 1.25,
       whiteSpace: "nowrap",
     },
     footer: {
@@ -1700,7 +1723,12 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
             {lineupRows.map((player, index) => (
               <div key={`${player.position}-${index}`} style={styles.lineupItem}>
                 <p style={styles.position}>{player.position}</p>
-                <p style={styles.playerName}>{player.name}</p>
+                <div style={styles.playerMeta}>
+                  <p style={styles.playerName}>{player.name}</p>
+                  {player.teamLabel ? (
+                    <p style={styles.teamLabel}>• {player.teamLabel}</p>
+                  ) : null}
+                </div>
                 <p style={styles.ovr}>{player.ovr}</p>
               </div>
             ))}
@@ -3263,7 +3291,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          TESTE BETA
+          Futebol brasileiro histórico • v34.3 escalação com origem • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
