@@ -58,6 +58,19 @@ function getRandomTeamExcept(currentTeam) {
   return getRandomTeamFromList(teams);
 }
 
+function normalizePlayerIdentity(value = "") {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getPlayerIdentityKey(player) {
+  return player?.playerKey || normalizePlayerIdentity(player?.name || player?.id || "");
+}
+
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -2002,6 +2015,7 @@ function App() {
     if (!currentTeam) return [];
 
     const pickedPlayerIds = lineup.map((item) => item.player.id);
+    const pickedPlayerKeys = lineup.map((item) => getPlayerIdentityKey(item.player));
 
     return currentTeam.players
       .filter((player) => !pickedPlayerIds.includes(player.id))
@@ -2009,11 +2023,13 @@ function App() {
         const compatibleSlots = openSlots.filter((slot) =>
           canPlayerFitSlot(player, slot)
         );
+        const isDuplicatePlayer = pickedPlayerKeys.includes(getPlayerIdentityKey(player));
 
         return {
           ...player,
           compatibleSlots,
-          isAvailable: compatibleSlots.length > 0,
+          isDuplicatePlayer,
+          isAvailable: compatibleSlots.length > 0 && !isDuplicatePlayer,
         };
       });
   }, [currentTeam, lineup, openSlots]);
@@ -3598,7 +3614,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v37.1 reroll corrigido • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v38 bloqueio de duplicados • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
