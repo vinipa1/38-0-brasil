@@ -1363,199 +1363,138 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
 
   const styles = {
     card: {
-      width: 900,
+      width: 880,
       boxSizing: "border-box",
-      background: "#f7f0df",
+      background: "linear-gradient(180deg, #f7f0df 0%, #efe4c9 100%)",
       color: "#0f172a",
-      padding: 40,
+      padding: 28,
       fontFamily:
         'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     },
-    inner: {
-      border: "1px solid rgba(15, 23, 42, 0.1)",
+    shell: {
       borderRadius: 34,
-      background: "#fffaf0",
-      padding: 32,
+      border: "1px solid rgba(15, 23, 42, 0.08)",
+      background: "rgba(255,250,240,0.96)",
+      padding: 22,
       boxSizing: "border-box",
+      boxShadow: "0 20px 40px rgba(15, 23, 42, 0.08)",
     },
-    top: {
+    brandRow: {
       display: "flex",
-      alignItems: "flex-start",
+      alignItems: "center",
       justifyContent: "space-between",
-      gap: 32,
+      gap: 16,
+      marginBottom: 18,
     },
-    eyebrow: {
+    brand: {
       margin: 0,
       color: "#047857",
-      fontSize: 14,
-      fontWeight: 900,
-      textTransform: "uppercase",
-      letterSpacing: 4,
-    },
-    title: {
-      margin: "12px 0 0",
-      fontSize: 64,
-      lineHeight: 1,
-      fontWeight: 950,
-      letterSpacing: -2,
-      color: "#0f172a",
-    },
-    subtitle: {
-      margin: "10px 0 0",
-      color: "#334155",
-      fontSize: 24,
-      fontWeight: 900,
-    },
-    pointsBox: {
-      minWidth: 150,
-      borderRadius: 28,
-      background: "#6ee7b7",
-      color: "#064e3b",
-      padding: "24px 30px",
-      textAlign: "center",
-      boxSizing: "border-box",
-    },
-    points: {
-      margin: 0,
-      fontSize: 60,
-      lineHeight: 1,
-      fontWeight: 950,
-    },
-    pointsLabel: {
-      margin: "6px 0 0",
       fontSize: 13,
       fontWeight: 950,
       textTransform: "uppercase",
       letterSpacing: 3,
     },
-    statGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(4, 1fr)",
-      gap: 16,
-      marginTop: 32,
+    brandSub: {
+      margin: "4px 0 0",
+      color: "#64748b",
+      fontSize: 12,
+      fontWeight: 800,
     },
-    statBox: {
-      borderRadius: 24,
+    positionBadge: {
+      borderRadius: 999,
+      background: "#0f172a",
+      color: "#ffffff",
+      padding: "10px 14px",
+      fontSize: 14,
+      fontWeight: 950,
+      letterSpacing: 1,
+    },
+    topGrid: {
+      display: "grid",
+      gridTemplateColumns: "1.2fr 0.8fr",
+      gap: 16,
+      alignItems: "stretch",
+    },
+    block: {
+      borderRadius: 26,
       background: "#ffffff",
+      border: "1px solid rgba(15, 23, 42, 0.06)",
       padding: 20,
       boxSizing: "border-box",
     },
-    statLabel: {
-      margin: 0,
-      color: "#64748b",
-      fontSize: 12,
-      fontWeight: 950,
-      textTransform: "uppercase",
-      letterSpacing: 2.2,
-    },
-    statValue: {
-      margin: "8px 0 0",
-      color: "#0f172a",
-      fontSize: 26,
-      lineHeight: 1.1,
-      fontWeight: 950,
-    },
-    contentGrid: {
-      display: "grid",
-      gridTemplateColumns: "1.1fr 0.9fr",
-      gap: 24,
-      marginTop: 32,
-    },
-    panel: {
-      borderRadius: 30,
-      background: "#ffffff",
-      padding: 24,
-      boxSizing: "border-box",
-    },
-    panelTitle: {
-      margin: 0,
-      color: "#0f172a",
-      fontSize: 26,
-      fontWeight: 950,
-      letterSpacing: -0.4,
-    },
-    lineupGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(2, 1fr)",
-      gap: 8,
-      marginTop: 16,
-    },
-    lineupItem: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 12,
-      borderRadius: 18,
-      background: "#f7f0df",
-      padding: "12px 14px",
-      boxSizing: "border-box",
-    },
-    position: {
-      margin: 0,
-      color: "#047857",
-      fontSize: 11,
-      fontWeight: 950,
-      textTransform: "uppercase",
-      letterSpacing: 2,
-    },
-    playerName: {
-      margin: "3px 0 0",
-      color: "#0f172a",
-      fontSize: 14,
-      lineHeight: 1.15,
-      fontWeight: 950,
-      maxWidth: 185,
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-    },
-    ovr: {
+    blockTitle: {
       margin: 0,
       color: "#0f172a",
       fontSize: 22,
       fontWeight: 950,
-      flexShrink: 0,
+      letterSpacing: -0.5,
     },
-    sideStack: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 24,
+    statGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(3, 1fr)",
+      gap: 10,
+      marginTop: 14,
     },
-    miniItem: {
-      borderRadius: 20,
+    statCard: {
+      borderRadius: 18,
       background: "#f7f0df",
-      padding: 16,
-      boxSizing: "border-box",
+      padding: "12px 14px",
     },
-    miniLabel: {
+    statLabel: {
       margin: 0,
-      color: "#047857",
-      fontSize: 11,
+      color: "#64748b",
+      fontSize: 10,
       fontWeight: 950,
       textTransform: "uppercase",
-      letterSpacing: 2,
+      letterSpacing: 1.6,
     },
-    miniName: {
-      margin: "5px 0 0",
+    statValue: {
+      margin: "6px 0 0",
       color: "#0f172a",
-      fontSize: 18,
+      fontSize: 20,
+      lineHeight: 1.05,
+      fontWeight: 950,
+    },
+    highlightWrap: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 10,
+      marginTop: 14,
+    },
+    highlightCard: {
+      borderRadius: 18,
+      background: "linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%)",
+      padding: "14px 14px",
+    },
+    highlightLabel: {
+      margin: 0,
+      color: "#047857",
+      fontSize: 10,
+      fontWeight: 950,
+      textTransform: "uppercase",
+      letterSpacing: 1.8,
+    },
+    highlightName: {
+      margin: "8px 0 0",
+      color: "#0f172a",
+      fontSize: 17,
       lineHeight: 1.1,
       fontWeight: 950,
       whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis",
     },
-    miniValue: {
-      margin: "4px 0 0",
-      color: "#64748b",
-      fontSize: 14,
+    highlightValue: {
+      margin: "5px 0 0",
+      color: "#334155",
+      fontSize: 13,
       fontWeight: 800,
     },
     tableList: {
       display: "flex",
       flexDirection: "column",
       gap: 8,
-      marginTop: 16,
+      marginTop: 14,
     },
     tableItem: {
       display: "flex",
@@ -1563,174 +1502,185 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       justifyContent: "space-between",
       gap: 12,
       borderRadius: 18,
-      padding: "12px 14px",
+      padding: "11px 13px",
       boxSizing: "border-box",
     },
-    tableName: {
+    tableText: {
       margin: 0,
-      fontSize: 14,
-      lineHeight: 1.15,
-      fontWeight: 950,
+      color: "#0f172a",
+      fontSize: 13,
+      lineHeight: 1.2,
+      fontWeight: 900,
       maxWidth: 235,
       whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis",
     },
-    tableMeta: {
-      margin: "4px 0 0",
-      fontSize: 12,
-      fontWeight: 800,
-      opacity: 0.72,
-    },
-    tablePoints: {
+    tablePts: {
       margin: 0,
-      fontSize: 22,
-      fontWeight: 950,
       flexShrink: 0,
+      color: "#0f172a",
+      fontSize: 16,
+      fontWeight: 950,
+    },
+    bottomBlock: {
+      borderRadius: 26,
+      background: "#ffffff",
+      border: "1px solid rgba(15, 23, 42, 0.06)",
+      padding: 20,
+      boxSizing: "border-box",
+      marginTop: 16,
+    },
+    lineupList: {
+      display: "grid",
+      gridTemplateColumns: "1fr",
+      gap: 8,
+      marginTop: 14,
+    },
+    lineupItem: {
+      display: "grid",
+      gridTemplateColumns: "56px 1fr 42px",
+      alignItems: "center",
+      gap: 12,
+      borderRadius: 16,
+      background: "#f7f0df",
+      padding: "10px 14px",
+      boxSizing: "border-box",
+    },
+    position: {
+      margin: 0,
+      color: "#047857",
+      fontSize: 12,
+      fontWeight: 950,
+      textTransform: "uppercase",
+      letterSpacing: 1.6,
+    },
+    playerName: {
+      margin: 0,
+      color: "#0f172a",
+      fontSize: 15,
+      fontWeight: 900,
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    },
+    ovr: {
+      margin: 0,
+      color: "#0f172a",
+      fontSize: 18,
+      fontWeight: 950,
+      textAlign: "right",
     },
     footer: {
-      marginTop: 28,
-      borderRadius: 22,
-      background: "#f7f0df",
-      padding: "16px 20px",
+      marginTop: 14,
       textAlign: "center",
     },
     footerText: {
       margin: 0,
       color: "#94a3b8",
-      fontSize: 12,
-      fontWeight: 950,
+      fontSize: 11,
+      fontWeight: 900,
       textTransform: "uppercase",
-      letterSpacing: 3,
+      letterSpacing: 2.2,
     },
     site: {
-      margin: "8px 0 0",
+      margin: "6px 0 0",
       color: "#047857",
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: 950,
     },
   };
 
   return (
     <div style={styles.card}>
-      <div style={styles.inner}>
-        <div style={styles.top}>
+      <div style={styles.shell}>
+        <div style={styles.brandRow}>
           <div>
-            <p style={styles.eyebrow}>38–0 Brasil</p>
-            <h1 style={styles.title}>{userPosition}º lugar</h1>
-            <p style={styles.subtitle}>
-              {userPosition === 1
-                ? "Campeão do Brasileirão histórico"
-                : userPosition <= 4
-                ? "Campanha de G-4"
-                : userPosition <= 6
-                ? "Campanha forte"
-                : "Campanha encerrada"}
-            </p>
+            <p style={styles.brand}>38–0 Brasil</p>
+            <p style={styles.brandSub}>Resumo compartilhável da sua campanha</p>
           </div>
 
-          <div style={styles.pointsBox}>
-            <p style={styles.points}>{userStanding.points}</p>
-            <p style={styles.pointsLabel}>pontos</p>
-          </div>
+          <div style={styles.positionBadge}>{userPosition}º lugar</div>
         </div>
 
-        <div style={styles.statGrid}>
-          <div style={styles.statBox}>
-            <p style={styles.statLabel}>Campanha</p>
-            <p style={styles.statValue}>
-              {userStanding.wins}V {userStanding.draws}E {userStanding.losses}D
-            </p>
+        <div style={styles.topGrid}>
+          <div style={styles.block}>
+            <h2 style={styles.blockTitle}>Resultado + Destaques</h2>
+
+            <div style={styles.statGrid}>
+              <div style={styles.statCard}>
+                <p style={styles.statLabel}>Campanha</p>
+                <p style={styles.statValue}>
+                  {userStanding.wins}V {userStanding.draws}E {userStanding.losses}D
+                </p>
+              </div>
+
+              <div style={styles.statCard}>
+                <p style={styles.statLabel}>Gols</p>
+                <p style={styles.statValue}>
+                  {userStanding.goalsFor} / {userStanding.goalsAgainst}
+                </p>
+              </div>
+
+              <div style={styles.statCard}>
+                <p style={styles.statLabel}>Força</p>
+                <p style={styles.statValue}>{leagueResult.userStrength}</p>
+              </div>
+            </div>
+
+            <div style={styles.highlightWrap}>
+              <div style={styles.highlightCard}>
+                <p style={styles.highlightLabel}>Artilheiro</p>
+                <p style={styles.highlightName}>{leagueResult.topScorer.name}</p>
+                <p style={styles.highlightValue}>{leagueResult.topScorer.goals} gols</p>
+              </div>
+
+              <div style={styles.highlightCard}>
+                <p style={styles.highlightLabel}>Assistente</p>
+                <p style={styles.highlightName}>{leagueResult.playmaker.name}</p>
+                <p style={styles.highlightValue}>{leagueResult.playmaker.assists} assistências</p>
+              </div>
+            </div>
           </div>
 
-          <div style={styles.statBox}>
-            <p style={styles.statLabel}>Gols</p>
-            <p style={styles.statValue}>
-              {userStanding.goalsFor}/{userStanding.goalsAgainst}
-            </p>
-          </div>
+          <div style={styles.block}>
+            <h2 style={styles.blockTitle}>Classificação</h2>
 
-          <div style={styles.statBox}>
-            <p style={styles.statLabel}>Saldo</p>
-            <p style={styles.statValue}>
-              {userStanding.goalDifference > 0 ? "+" : ""}
-              {userStanding.goalDifference}
-            </p>
-          </div>
+            <div style={styles.tableList}>
+              {shareTable.map((team) => {
+                const isUser = team.isUserTeam;
 
-          <div style={styles.statBox}>
-            <p style={styles.statLabel}>Força</p>
-            <p style={styles.statValue}>{leagueResult.userStrength}</p>
-          </div>
-        </div>
+                return (
+                  <div
+                    key={team.id}
+                    style={{
+                      ...styles.tableItem,
+                      background: isUser ? "#6ee7b7" : "#f7f0df",
+                    }}
+                  >
+                    <p style={styles.tableText}>
+                      {team.position}º {team.label} — {team.points} pts
+                    </p>
 
-        <div style={styles.contentGrid}>
-          <div style={styles.panel}>
-            <h2 style={styles.panelTitle}>Escalação</h2>
-
-            <div style={styles.lineupGrid}>
-              {lineupRows.map((player, index) => (
-                <div key={`${player.position}-${index}`} style={styles.lineupItem}>
-                  <div>
-                    <p style={styles.position}>{player.position}</p>
-                    <p style={styles.playerName}>{player.name}</p>
+                    <p style={styles.tablePts}>{team.points}</p>
                   </div>
-
-                  <p style={styles.ovr}>{player.ovr}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+        </div>
 
-          <div style={styles.sideStack}>
-            <div style={styles.panel}>
-              <h2 style={styles.panelTitle}>Destaques</h2>
+        <div style={styles.bottomBlock}>
+          <h2 style={styles.blockTitle}>Escalação</h2>
 
-              <div style={{ ...styles.miniItem, marginTop: 16 }}>
-                <p style={styles.miniLabel}>Artilheiro</p>
-                <p style={styles.miniName}>{leagueResult.topScorer.name}</p>
-                <p style={styles.miniValue}>{leagueResult.topScorer.goals} gols</p>
+          <div style={styles.lineupList}>
+            {lineupRows.map((player, index) => (
+              <div key={`${player.position}-${index}`} style={styles.lineupItem}>
+                <p style={styles.position}>{player.position}</p>
+                <p style={styles.playerName}>{player.name}</p>
+                <p style={styles.ovr}>{player.ovr}</p>
               </div>
-
-              <div style={{ ...styles.miniItem, marginTop: 10 }}>
-                <p style={styles.miniLabel}>Assistente</p>
-                <p style={styles.miniName}>{leagueResult.playmaker.name}</p>
-                <p style={styles.miniValue}>{leagueResult.playmaker.assists} assists</p>
-              </div>
-            </div>
-
-            <div style={styles.panel}>
-              <h2 style={styles.panelTitle}>Classificação</h2>
-
-              <div style={styles.tableList}>
-                {shareTable.map((team) => {
-                  const isUser = team.isUserTeam;
-
-                  return (
-                    <div
-                      key={team.id}
-                      style={{
-                        ...styles.tableItem,
-                        background: isUser ? "#6ee7b7" : "#f7f0df",
-                        color: isUser ? "#064e3b" : "#0f172a",
-                      }}
-                    >
-                      <div>
-                        <p style={styles.tableName}>
-                          {team.position}º {team.label}
-                        </p>
-                        <p style={styles.tableMeta}>
-                          {team.wins}V {team.draws}E {team.losses}D • SG{" "}
-                          {team.goalDifference}
-                        </p>
-                      </div>
-
-                      <p style={styles.tablePoints}>{team.points}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            ))}
           </div>
         </div>
 
@@ -2145,8 +2095,8 @@ ${lineupText}`;
 
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({
-          title: "Minha campanha no 38–0 Brasil. Jogue também: 38-0-brasil.vercel.app",
-          text: `Minha campanha no 38–0 Brasil. Jogue também: 38-0-brasil.vercel.app${getSiteShareUrl()}`,
+          title: "Minha campanha no 38–0 Brasil",
+          text: `Minha campanha no 38–0 Brasil. Jogue também: ${getSiteShareUrl()}`,
           files: [file],
         });
         setShareMessage("Compartilhamento aberto.");
@@ -3277,7 +3227,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v33.1 card sem oklch • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          BETA
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
