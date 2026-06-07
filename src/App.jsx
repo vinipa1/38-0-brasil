@@ -1964,7 +1964,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
         </div>
 
         <div style={styles.footer}>
-          <p style={styles.footerText}>Monte seu XI. Simule o Brasileirão. Busque o 38–0.</p>
+          <p style={styles.footerText}>Monte seu XI. Simule o Brasileirão e tente conquista-lo. Se conseguir, busque o 38–0.</p>
           <p style={styles.site}>{siteUrl || '38-0 Brasil'}</p>
         </div>
       </div>
@@ -1998,6 +1998,41 @@ function App() {
   const [shareImageUrl, setShareImageUrl] = useState("");
   const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
+
+  const databaseStats = useMemo(() => {
+    const teamsWithPlayers = getTeamsWithPlayers();
+    const uniqueClubIds = new Set(teamsWithPlayers.map((team) => team.clubId));
+
+    return {
+      clubs: uniqueClubIds.size,
+      squads: teamsWithPlayers.length,
+      players: teamsWithPlayers.reduce(
+        (total, team) => total + (team.players?.length || 0),
+        0
+      ),
+    };
+  }, []);
+
+  const homeStatsCards = [
+    {
+      label: "Times na base",
+      value: databaseStats.clubs,
+      description: "clubes diferentes com elencos jogáveis",
+      icon: Users,
+    },
+    {
+      label: "Elencos históricos",
+      value: databaseStats.squads,
+      description: "versões clássicas, cult e marcantes",
+      icon: LayoutGrid,
+    },
+    {
+      label: "Jogadores cadastrados",
+      value: databaseStats.players,
+      description: "cartas disponíveis entre todos os elencos",
+      icon: Shirt,
+    },
+  ];
 
   const openSlots = useMemo(() => {
     if (!selectedFormation) return [];
@@ -3607,6 +3642,78 @@ ${lineupText}`;
     );
   }
 
+  if (screen === "support") {
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-12">
+          <button
+            onClick={goHome}
+            className="mb-8 inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+          >
+            <ArrowLeft size={18} />
+            Voltar
+          </button>
+
+          <div className="rounded-[2.25rem] border border-slate-900/10 bg-white/85 p-6 text-left shadow-[0_18px_50px_rgba(15,23,42,0.10)] sm:p-8 md:p-10">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-700">
+              <Trophy size={18} />
+              Apoia-se
+            </div>
+
+            <h1 className="max-w-3xl text-4xl font-black tracking-tight md:text-6xl">
+              Apoie o 38–0 Brasil
+            </h1>
+
+            <p className="mt-5 max-w-3xl text-lg leading-relaxed text-slate-700">
+              O projeto está crescendo com novos elencos, ajustes de overall, melhorias no
+              draft e novas formas de compartilhar sua campanha. Seu apoio ajuda a manter
+              a base atualizada e a criar novas funções para o jogo.
+            </p>
+
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              <div className="rounded-3xl border border-slate-900/10 bg-[#f7f0df] p-5">
+                <Users className="mb-4 text-emerald-700" size={28} />
+                <h2 className="text-lg font-black">Mais elencos</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  Revisões históricas, jogadores corretos e novas versões de clubes.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-900/10 bg-[#f7f0df] p-5">
+                <LayoutGrid className="mb-4 text-emerald-700" size={28} />
+                <h2 className="text-lg font-black">Mais modos</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  Ideias como rankings, filtros, conquistas e variações de draft.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-900/10 bg-[#f7f0df] p-5">
+                <Share2 className="mb-4 text-emerald-700" size={28} />
+                <h2 className="text-lg font-black">Mais imersão</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  Artes compartilháveis, cards melhores e simulações mais completas.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8 rounded-3xl border border-emerald-600/20 bg-emerald-300/10 p-5">
+              <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-700">
+                Em breve
+              </p>
+              <p className="mt-2 text-base font-bold text-slate-700">
+                Aqui pode entrar seu link do Apoia-se, Pix, Catarse, Ko-fi ou qualquer
+                forma de contribuição que você quiser usar.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
         <ThemeStyles />
@@ -3614,7 +3721,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v38 bloqueio de duplicados • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+         Conquiste o Brasileirão. E se conseguir? Busque o 38-0.
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
@@ -3635,13 +3742,46 @@ ${lineupText}`;
             Começar Draft
           </button>
 
-          <button className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/70 px-7 py-4 font-bold text-slate-950 transition hover:bg-white">
-            <Shuffle size={20} />
-            Ver exemplo
+          <button
+            onClick={() => setScreen("support")}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/70 px-7 py-4 font-bold text-slate-950 transition hover:bg-white"
+          >
+            <Users size={20} />
+            Apoia-se
           </button>
         </div>
 
-        <div className="mt-14 grid w-full max-w-4xl gap-4 md:grid-cols-3">
+        <div className="mt-10 grid w-full max-w-4xl gap-4 md:grid-cols-3">
+          {homeStatsCards.map((card) => {
+            const Icon = card.icon;
+
+            return (
+              <div
+                key={card.label}
+                className="rounded-3xl border border-emerald-600/15 bg-white/85 p-5 text-left shadow-[0_16px_45px_rgba(15,23,42,0.08)]"
+              >
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <Icon className="text-emerald-700" size={26} />
+                  <span className="rounded-full bg-emerald-300 px-3 py-1 text-xs font-black text-emerald-950">
+                    Base
+                  </span>
+                </div>
+
+                <p className="text-4xl font-black tracking-tight text-slate-950">
+                  {card.value.toLocaleString("pt-BR")}
+                </p>
+                <h2 className="mt-2 text-sm font-black uppercase tracking-[0.18em] text-emerald-700">
+                  {card.label}
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  {card.description}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 grid w-full max-w-4xl gap-4 md:grid-cols-3">
           <div className="rounded-3xl border border-slate-900/10 bg-white/80 shadow-[0_16px_45px_rgba(15,23,42,0.08)] p-6 text-left">
             <Shirt className="mb-4 text-emerald-700" size={28} />
             <h2 className="text-lg font-bold">Escolha a formação</h2>
