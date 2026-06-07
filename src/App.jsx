@@ -1703,41 +1703,18 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: 7,
+      gap: 8,
       width: 116,
       textAlign: 'center',
     },
-    playerBall: {
-      position: 'relative',
+    playerBallScale: {
+      width: 60,
+      height: 60,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: 54,
-      height: 54,
-      borderRadius: '999px',
-      background: '#ffffff',
-      border: '3px solid #111827',
-      boxShadow: '0 8px 16px rgba(15,23,42,0.22)',
-      overflow: 'hidden',
-    },
-    playerBallGlow: {
-      display: 'none',
-    },
-    playerOverall: {
-      position: 'relative',
-      zIndex: 1,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: 38,
-      height: 38,
-      padding: '0 7px',
-      borderRadius: '999px',
-      background: '#ffffff',
-      color: '#0f172a',
-      fontSize: 18,
-      fontWeight: 950,
-      lineHeight: 1,
+      transform: 'scale(1.28)',
+      transformOrigin: 'center center',
     },
     playerLabel: {
       minWidth: 0,
@@ -1880,7 +1857,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
               {lineupItems.map((item) => {
                 const playerName = getShortPlayerName(item.player?.name || item.position);
                 const clubId = item.team?.clubId;
-                const background = getKitBackground(clubId);
+
                 return (
                   <div
                     key={`${selectedFormation.id}-${item.id}-${item.slotIndex}`}
@@ -1890,9 +1867,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                       top: `${item.y}%`,
                     }}
                   >
-                    <div style={{ ...styles.playerBall, background }}>
-                      <div style={styles.playerBallGlow} />
-                      <div style={styles.playerOverall}>{item.player?.ovr || '—'}</div>
+                    <div style={styles.playerBallScale}>
+                      <KitBallIcon clubId={clubId} overall={item.player?.ovr || null} />
                     </div>
 
                     <div style={styles.playerLabel}>
@@ -3474,7 +3450,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v36.5 bolinhas maiores na arte • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v36.6 arte com mesmo padrão visual • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
