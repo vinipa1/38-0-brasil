@@ -2069,7 +2069,6 @@ function App() {
     setCurrentTeam(null);
     setRollingTeam(null);
     setIsRolling(false);
-    setRerollsRemaining(getDraftRerollLimit(gameMode));
     setPendingSelection(null);
     setLeagueResult(null);
     setIsRolling(true);
@@ -2183,6 +2182,7 @@ function App() {
     setCurrentTeam(null);
     setRollingTeam(null);
     setIsRolling(false);
+    setRerollsRemaining(getDraftRerollLimit(gameMode));
     setPendingSelection(null);
     setLeagueResult(null);
     setRevealedMatchesCount(0);
@@ -3598,7 +3598,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v37 reroll do draft • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v37.1 reroll corrigido • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
