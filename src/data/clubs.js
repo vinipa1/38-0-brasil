@@ -64,7 +64,7 @@ export const clubs = [
     kit: {
       type: "solid",
       colors: ["#ffffff", "#111111"],
-      baseColor: "#ffffff",
+      baseColor: "#000000",
       accentColor: "#111111",
       textColor: "#111111",
     },
@@ -78,7 +78,7 @@ export const clubs = [
     kit: {
       type: "diagonal-sash",
       colors: ["#111111", "#ffffff"],
-      baseColor: "#111111",
+      baseColor: "#000000",
       accentColor: "#ffffff",
       textColor: "#ffffff",
     },
@@ -343,9 +343,9 @@ export const clubs = [
     state: "PE",
     kit: {
       type: "horizontal-stripes",
-      colors: ["#111111", "#ffffff", "#d71920"],
+      colors: ["#ff0000", "#000000", "#ffffff"],
       baseColor: "#111111",
-      accentColor: "#d71920",
+      accentColor: "#000000",
       textColor: "#ffffff",
     },
   },
@@ -416,7 +416,7 @@ export const clubs = [
       colors: ["#ffffff", "#111111"],
       baseColor: "#ffffff",
       accentColor: "#111111",
-      textColor: "#111111",
+      textColor: "#ffffff",
     },
   },
   {
