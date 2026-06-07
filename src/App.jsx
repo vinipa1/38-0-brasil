@@ -2002,9 +2002,10 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
 }
 
 
+const LOGO_LIGHT_SRC = "/logo-38-0-light.png";
+const LOGO_DARK_SRC = "/logo-38-0-dark.png";
+
 const PIX_KEY = "bcf96c05-b212-4d13-951a-7e17ee943372";
-const PIX_COPY_AND_PASTE =
-  "00020126580014br.gov.bcb.pix0136bcf96c05-b212-4d13-951a-7e17ee9433725204000053039865802BR5923Vinicius Pereira Arruda6009Sao Paulo62240520daqr17902651208140756304F853";
 const PIX_QR_CODE_SRC = "/pix-qrcode.png";
 
 function App() {
@@ -2033,7 +2034,6 @@ function App() {
   const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const [copiedPixKey, setCopiedPixKey] = useState(false);
-  const [copiedPixCode, setCopiedPixCode] = useState(false);
   const [pixCopyMessage, setPixCopyMessage] = useState("");
 
   const databaseStats = useMemo(() => {
@@ -2374,25 +2374,14 @@ ${lineupText}`;
     }
   }
 
-  async function copySupportPix(value, type) {
+  async function copySupportPix(value) {
     try {
       await navigator.clipboard.writeText(value);
       setPixCopyMessage("");
-
-      if (type === "key") {
-        setCopiedPixKey(true);
-
-        window.setTimeout(() => {
-          setCopiedPixKey(false);
-        }, 1800);
-
-        return;
-      }
-
-      setCopiedPixCode(true);
+      setCopiedPixKey(true);
 
       window.setTimeout(() => {
-        setCopiedPixCode(false);
+        setCopiedPixKey(false);
       }, 1800);
     } catch {
       setPixCopyMessage("Não consegui copiar automaticamente. Selecione e copie manualmente.");
@@ -3761,8 +3750,8 @@ ${lineupText}`;
                   </h2>
 
                   <p className="mt-3 text-sm leading-relaxed text-slate-700">
-                    Você pode escanear o QR Code ou copiar o código Pix abaixo. A chave usada é
-                    aleatória, mas o nome do recebedor aparece normalmente na confirmação do Pix.
+                    Você pode escanear o QR Code ou copiar a chave Pix aleatória. O nome do
+                    recebedor aparece normalmente na confirmação do Pix.
                   </p>
 
                   <div className="mt-5 space-y-4">
@@ -3777,7 +3766,7 @@ ${lineupText}`;
 
                       <button
                         type="button"
-                        onClick={() => copySupportPix(PIX_KEY, "key")}
+                        onClick={() => copySupportPix(PIX_KEY)}
                         className="force-dark-text mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-200"
                       >
                         <Copy size={16} />
@@ -3785,24 +3774,7 @@ ${lineupText}`;
                       </button>
                     </div>
 
-                    <div className="rounded-2xl border border-slate-900/10 bg-white/80 p-4">
-                      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                        Pix copia e cola
-                      </p>
 
-                      <p className="mt-2 max-h-24 overflow-auto break-all rounded-xl bg-slate-950/5 p-3 font-mono text-xs font-bold leading-relaxed text-slate-700">
-                        {PIX_COPY_AND_PASTE}
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={() => copySupportPix(PIX_COPY_AND_PASTE, "code")}
-                        className="force-dark-text mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800"
-                      >
-                        <Copy size={16} />
-                        {copiedPixCode ? "Código copiado!" : "Copiar Pix copia e cola"}
-                      </button>
-                    </div>
                   </div>
 
                   {pixCopyMessage && (
@@ -3829,9 +3801,13 @@ ${lineupText}`;
          Conquiste o Brasileirão. E se conseguir? Busque o 38-0.
         </div>
 
-        <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
-          38–0 Brasil
-        </h1>
+        <div className="flex justify-center">
+          <img
+            src={theme === "dark" ? LOGO_DARK_SRC : LOGO_LIGHT_SRC}
+            alt="38–0 Brasil"
+            className="h-auto w-[260px] max-w-[80vw] sm:w-[340px] md:w-[420px]"
+          />
+        </div>
 
         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-slate-700 md:text-xl">
           Monte um XI com lendas de várias eras do futebol brasileiro e tente
