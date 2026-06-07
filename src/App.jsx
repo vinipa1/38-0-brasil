@@ -1541,7 +1541,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       borderRadius: 26,
       background: "#ffffff",
       border: "1px solid rgba(15, 23, 42, 0.06)",
-      padding: 20,
+      padding: "22px 20px 26px",
       boxSizing: "border-box",
       marginTop: 16,
     },
@@ -1558,9 +1558,9 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       gap: 12,
       borderRadius: 16,
       background: "#f7f0df",
-      padding: "11px 14px",
+      padding: "14px 14px",
       boxSizing: "border-box",
-      minHeight: 64,
+      minHeight: 78,
     },
     position: {
       margin: 0,
@@ -1569,38 +1569,40 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontWeight: 950,
       textTransform: "uppercase",
       letterSpacing: 1.6,
-      lineHeight: 1.35,
+      lineHeight: 1.5,
     },
     playerMeta: {
       minWidth: 0,
       display: "flex",
       flexDirection: "column",
       justifyContent: "center",
-      gap: 2,
+      gap: 5,
+      overflow: "visible",
     },
     playerName: {
       margin: 0,
       color: "#0f172a",
-      fontSize: 15,
-      lineHeight: 1.45,
-      fontWeight: 900,
+      fontSize: 14,
+      lineHeight: 1.65,
+      fontWeight: 850,
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
       minWidth: 0,
-      paddingTop: 1,
-      paddingBottom: 1,
+      paddingTop: 2,
+      paddingBottom: 2,
     },
     teamLabel: {
       margin: 0,
       color: "#64748b",
       fontSize: 10,
-      lineHeight: 1.35,
-      fontWeight: 800,
+      lineHeight: 1.55,
+      fontWeight: 750,
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap",
       minWidth: 0,
+      paddingBottom: 1,
     },
     ovr: {
       margin: 0,
@@ -1608,7 +1610,7 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       fontSize: 18,
       fontWeight: 950,
       textAlign: "right",
-      lineHeight: 1.35,
+      lineHeight: 1.5,
       whiteSpace: "nowrap",
     },
     footer: {
@@ -3290,7 +3292,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Seja o Campeão Brasileiro!
+          Ganhe o Brasileirão!
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
