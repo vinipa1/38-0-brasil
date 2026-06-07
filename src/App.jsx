@@ -811,20 +811,15 @@ function KitBallIcon({ clubId, overall = null }) {
 
   return (
     <div
-      className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white/25 shadow-lg sm:h-12 sm:w-12"
-      style={{ background }}
+      className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-[3px] border-slate-950 bg-white shadow-lg sm:h-12 sm:w-12"
       title={club.name}
     >
-      <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.45),transparent_34%)]" />
       {overall ? (
-        <span className="relative flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-[10px] font-black leading-none text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,0.22)] ring-1 ring-black/10 sm:h-7 sm:w-7 sm:text-xs">
+        <span className="relative text-[11px] font-black leading-none text-slate-950 sm:text-sm">
           {overall}
         </span>
       ) : (
-        <span
-          className="relative text-[7px] font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-[9px]"
-          style={{ color: kit.textColor }}
-        >
+        <span className="relative text-[8px] font-black text-slate-950 sm:text-[10px]">
           {club.shortName}
         </span>
       )}
@@ -868,12 +863,18 @@ function TacticalPitch({
     pendingSelection?.compatibleSlots.map((slot) => slot.index) || [];
 
   return (
-    <div className="relative min-h-[410px] overflow-hidden rounded-[1.5rem] border border-slate-900/10 bg-[radial-gradient(circle_at_center,_rgba(16,185,129,0.22),_rgba(6,20,13,0.95))] p-3 sm:min-h-[520px] sm:rounded-[2rem] sm:p-4">
-      <div className="absolute inset-3 rounded-[1.25rem] border-2 border-emerald-200/20 sm:inset-4 sm:rounded-[1.5rem]" />
-      <div className="absolute left-1/2 top-3 h-14 w-28 -translate-x-1/2 rounded-b-full border-2 border-emerald-200/20 border-t-0 sm:top-4 sm:h-20 sm:w-40" />
-      <div className="absolute bottom-3 left-1/2 h-14 w-28 -translate-x-1/2 rounded-t-full border-2 border-emerald-200/20 border-b-0 sm:bottom-4 sm:h-20 sm:w-40" />
-      <div className="absolute left-3 right-3 top-1/2 border-t-2 border-emerald-200/15 sm:left-4 sm:right-4" />
-      <div className="absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-200/15 sm:h-28 sm:w-28" />
+    <div
+      className="relative min-h-[430px] overflow-hidden rounded-[1.5rem] border border-slate-900/10 p-3 sm:min-h-[560px] sm:rounded-[2rem] sm:p-4"
+      style={{
+        background:
+          "repeating-linear-gradient(180deg, #2f8556 0 54px, #2b7a4d 54px 108px)",
+      }}
+    >
+      <div className="absolute inset-3 rounded-[1.25rem] border-2 border-white/45 sm:inset-4 sm:rounded-[1.5rem]" />
+      <div className="absolute left-1/2 top-3 h-16 w-32 -translate-x-1/2 rounded-b-full border-2 border-white/45 border-t-0 sm:top-4 sm:h-24 sm:w-48" />
+      <div className="absolute bottom-3 left-1/2 h-16 w-32 -translate-x-1/2 rounded-t-full border-2 border-white/45 border-b-0 sm:bottom-4 sm:h-24 sm:w-48" />
+      <div className="absolute left-3 right-3 top-1/2 border-t-2 border-white/45 sm:left-4 sm:right-4" />
+      <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/45 sm:h-36 sm:w-36" />
 
       {formation.slots.map((slot, index) => {
         const lineupItem = lineup.find((item) => item.slotIndex === index);
@@ -906,10 +907,10 @@ function TacticalPitch({
               </div>
             ) : (
               <div
-                className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-[9px] font-black shadow-xl transition sm:h-12 sm:w-12 sm:text-[11px] md:h-14 md:w-14 md:text-xs ${
+                className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-[9px] font-black shadow-lg transition sm:h-12 sm:w-12 sm:text-[11px] md:h-14 md:w-14 md:text-xs ${
                   isHighlighted
-                    ? "border-yellow-200 bg-yellow-300 text-yellow-950 shadow-[0_0_32px_rgba(253,224,71,0.65)]"
-                    : "border-white/20 bg-black/40 text-slate-700"
+                    ? "border-yellow-300 bg-yellow-200 text-yellow-950 shadow-[0_0_22px_rgba(253,224,71,0.55)]"
+                    : "border-slate-900 bg-white text-slate-950"
                 }`}
               >
                 {slot.position}
@@ -917,12 +918,12 @@ function TacticalPitch({
             )}
 
             <div
-              className={`w-fit max-w-[82px] rounded-md border px-1 py-[2px] backdrop-blur transition sm:max-w-[108px] sm:rounded-lg sm:px-1.5 sm:py-0.5 ${
+              className={`w-fit max-w-[92px] rounded-md px-1.5 py-[3px] transition sm:max-w-[116px] sm:px-2 sm:py-1 ${
                 isHighlighted
-                  ? "border-yellow-200 bg-yellow-300/20"
+                  ? "bg-yellow-200 text-yellow-950 shadow-[0_4px_10px_rgba(15,23,42,0.18)]"
                   : player
-                  ? "border-emerald-300/30 bg-emerald-300/15"
-                  : "border-slate-900/10 bg-white/80"
+                  ? "bg-white text-slate-950 shadow-[0_4px_10px_rgba(15,23,42,0.18)]"
+                  : "bg-white text-slate-950 shadow-[0_4px_10px_rgba(15,23,42,0.12)]"
               }`}
             >
               <p className="truncate whitespace-nowrap text-[8px] font-black leading-none sm:text-[10px] md:text-[11px]">
@@ -3447,7 +3448,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v35.5 campo estilo 7a0 • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v36 campo draft 7a0 • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
