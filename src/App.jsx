@@ -811,15 +811,20 @@ function KitBallIcon({ clubId, overall = null }) {
 
   return (
     <div
-      className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-[3px] border-slate-950 bg-white shadow-lg sm:h-12 sm:w-12"
+      className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-[3px] border-slate-950 shadow-lg sm:h-12 sm:w-12"
+      style={{ background }}
       title={club.name}
     >
+      <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.42),transparent_36%)]" />
       {overall ? (
-        <span className="relative text-[11px] font-black leading-none text-slate-950 sm:text-sm">
+        <span className="relative flex h-6 min-w-6 items-center justify-center rounded-full bg-white/92 px-1.5 text-[10px] font-black leading-none text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,0.22)] ring-1 ring-black/10 sm:h-7 sm:min-w-7 sm:text-xs">
           {overall}
         </span>
       ) : (
-        <span className="relative text-[8px] font-black text-slate-950 sm:text-[10px]">
+        <span
+          className="relative text-[7px] font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] sm:text-[9px]"
+          style={{ color: kit.textColor }}
+        >
           {club.shortName}
         </span>
       )}
@@ -3448,7 +3453,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v36 campo draft 7a0 • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v36.1 campo com uniformes • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
