@@ -1,13 +1,16 @@
 import { useMemo, useRef, useState } from "react";
+import html2canvas from "html2canvas";
 import {
   ArrowLeft,
   Check,
   Copy,
+  Download,
   LayoutGrid,
   Moon,
   Play,
   RefreshCw,
   Shuffle,
+  Share2,
   Shirt,
   Sun,
   Trophy,
@@ -1321,6 +1324,194 @@ function getPartialUserPosition(leagueResult, revealedMatches) {
   return getPartialUserStanding(leagueResult, revealedMatches.length).position;
 }
 
+
+function getShareTableWindow(table, userPosition) {
+  if (!table?.length) return [];
+
+  const userIndex = Math.max(0, userPosition - 1);
+  let start = userIndex - 2;
+
+  if (start < 0) start = 0;
+  if (start + 5 > table.length) start = Math.max(0, table.length - 5);
+
+  return table.slice(start, start + 5).map((team, index) => ({
+    ...team,
+    position: start + index + 1,
+  }));
+}
+
+function ResultShareCard({ leagueResult, selectedFormation, lineup }) {
+  if (!leagueResult || !selectedFormation) return null;
+
+  const { userStanding, userPosition, table } = leagueResult;
+  const shareTable = getShareTableWindow(table, userPosition);
+  const lineupRows = selectedFormation.slots.map((slot, index) => {
+    const lineupItem = lineup.find((item) => item.slotIndex === index);
+
+    return {
+      position: slot.position,
+      name: lineupItem?.player.name || "Vazio",
+      ovr: lineupItem?.player.ovr || "—",
+    };
+  });
+
+  return (
+    <div className="w-[900px] overflow-hidden rounded-[42px] bg-[#f7f0df] p-10 text-slate-950 shadow-2xl">
+      <div className="rounded-[34px] border border-slate-900/10 bg-white/85 p-8">
+        <div className="flex items-start justify-between gap-8">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.3em] text-emerald-700">
+              38–0 Brasil
+            </p>
+            <h1 className="mt-3 text-6xl font-black tracking-tight">
+              {userPosition}º lugar
+            </h1>
+            <p className="mt-2 text-2xl font-black text-slate-700">
+              {userPosition === 1
+                ? "Campeão do Brasileirão histórico"
+                : userPosition <= 4
+                ? "Campanha de G-4"
+                : userPosition <= 6
+                ? "Campanha forte"
+                : "Campanha encerrada"}
+            </p>
+          </div>
+
+          <div className="rounded-[28px] bg-emerald-300 px-8 py-6 text-center text-emerald-950">
+            <p className="text-6xl font-black leading-none">{userStanding.points}</p>
+            <p className="mt-1 text-sm font-black uppercase tracking-[0.22em]">
+              pontos
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 grid grid-cols-4 gap-4">
+          <div className="rounded-3xl bg-white p-5">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+              Campanha
+            </p>
+            <p className="mt-2 text-2xl font-black">
+              {userStanding.wins}V {userStanding.draws}E {userStanding.losses}D
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+              Gols
+            </p>
+            <p className="mt-2 text-2xl font-black">
+              {userStanding.goalsFor}/{userStanding.goalsAgainst}
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+              Saldo
+            </p>
+            <p className="mt-2 text-2xl font-black">
+              {userStanding.goalDifference > 0 ? "+" : ""}
+              {userStanding.goalDifference}
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+              Força
+            </p>
+            <p className="mt-2 text-2xl font-black">{leagueResult.userStrength}</p>
+          </div>
+        </div>
+
+        <div className="mt-8 grid grid-cols-[1.1fr_0.9fr] gap-6">
+          <div className="rounded-[30px] bg-white p-6">
+            <h2 className="text-2xl font-black">Escalação</h2>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {lineupRows.map((player, index) => (
+                <div
+                  key={`${player.position}-${index}`}
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-[#f7f0df] px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                      {player.position}
+                    </p>
+                    <p className="truncate text-sm font-black">{player.name}</p>
+                  </div>
+
+                  <p className="shrink-0 text-xl font-black">{player.ovr}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-[30px] bg-white p-6">
+              <h2 className="text-2xl font-black">Destaques</h2>
+
+              <div className="mt-4 space-y-3">
+                <div className="rounded-2xl bg-[#f7f0df] p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                    Artilheiro
+                  </p>
+                  <p className="mt-1 truncate text-lg font-black">
+                    {leagueResult.topScorer.name}
+                  </p>
+                  <p className="text-sm font-bold text-slate-500">
+                    {leagueResult.topScorer.goals} gols
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-[#f7f0df] p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                    Assistente
+                  </p>
+                  <p className="mt-1 truncate text-lg font-black">
+                    {leagueResult.playmaker.name}
+                  </p>
+                  <p className="text-sm font-bold text-slate-500">
+                    {leagueResult.playmaker.assists} assists
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[30px] bg-white p-6">
+              <h2 className="text-2xl font-black">Classificação</h2>
+
+              <div className="mt-4 space-y-2">
+                {shareTable.map((team) => (
+                  <div
+                    key={team.id}
+                    className={`flex items-center justify-between gap-3 rounded-2xl px-4 py-3 ${
+                      team.isUserTeam ? "bg-emerald-300 text-emerald-950" : "bg-[#f7f0df]"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black">
+                        {team.position}º {team.label}
+                      </p>
+                      <p className="text-xs font-bold opacity-70">
+                        {team.wins}V {team.draws}E {team.losses}D • SG {team.goalDifference}
+                      </p>
+                    </div>
+
+                    <p className="shrink-0 text-xl font-black">{team.points}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p className="mt-7 text-center text-xs font-black uppercase tracking-[0.24em] text-slate-400">
+          Monte seu XI. Simule o Brasileirão. Busque o 38–0.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [theme, setTheme] = useState("light");
   const themeClass = theme === "dark" ? "theme-dark" : "theme-light";
@@ -1341,6 +1532,10 @@ function App() {
   const [revealedMatchesCount, setRevealedMatchesCount] = useState(0);
   const currentMatchRef = useRef(null);
   const [copiedResult, setCopiedResult] = useState(false);
+  const shareCardRef = useRef(null);
+  const [shareImageUrl, setShareImageUrl] = useState("");
+  const [isGeneratingShareImage, setIsGeneratingShareImage] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
 
   const openSlots = useMemo(() => {
     if (!selectedFormation) return [];
@@ -1512,6 +1707,8 @@ function App() {
     const result = simulateBrazilianLeague(lineup, selectedFormation);
     setLeagueResult(result);
     setCopiedResult(false);
+    setShareImageUrl("");
+    setShareMessage("");
 
     if (mode === "step") {
       setRevealedMatchesCount(0);
@@ -1598,6 +1795,114 @@ ${lineupText}`;
       }, 1800);
     } catch {
       setCopiedResult(false);
+    }
+  }
+
+  async function createShareImageBlob() {
+    if (!shareCardRef.current) return null;
+
+    const canvas = await html2canvas(shareCardRef.current, {
+      backgroundColor: null,
+      scale: 2,
+      useCORS: true,
+    });
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png", 1);
+    });
+  }
+
+  async function generateShareImage() {
+    try {
+      setIsGeneratingShareImage(true);
+      setShareMessage("");
+
+      const blob = await createShareImageBlob();
+
+      if (!blob) {
+        setShareMessage("Não consegui gerar a imagem.");
+        return;
+      }
+
+      if (shareImageUrl) {
+        URL.revokeObjectURL(shareImageUrl);
+      }
+
+      const imageUrl = URL.createObjectURL(blob);
+      setShareImageUrl(imageUrl);
+      setShareMessage("Imagem gerada.");
+    } catch {
+      setShareMessage("Erro ao gerar imagem.");
+    } finally {
+      setIsGeneratingShareImage(false);
+    }
+  }
+
+  async function downloadShareImage() {
+    try {
+      setIsGeneratingShareImage(true);
+      setShareMessage("");
+
+      const blob = await createShareImageBlob();
+
+      if (!blob) {
+        setShareMessage("Não consegui gerar a imagem.");
+        return;
+      }
+
+      const imageUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = imageUrl;
+      link.download = "38-0-brasil-campanha.png";
+      link.click();
+
+      URL.revokeObjectURL(imageUrl);
+      setShareMessage("Imagem baixada.");
+    } catch {
+      setShareMessage("Erro ao baixar imagem.");
+    } finally {
+      setIsGeneratingShareImage(false);
+    }
+  }
+
+  async function shareResultImage() {
+    try {
+      setIsGeneratingShareImage(true);
+      setShareMessage("");
+
+      const blob = await createShareImageBlob();
+
+      if (!blob) {
+        setShareMessage("Não consegui gerar a imagem.");
+        return;
+      }
+
+      const file = new File([blob], "38-0-brasil-campanha.png", {
+        type: "image/png",
+      });
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: "Minha campanha no 38–0 Brasil",
+          text: "Minha campanha no 38–0 Brasil.",
+          files: [file],
+        });
+        setShareMessage("Compartilhamento aberto.");
+        return;
+      }
+
+      const imageUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = imageUrl;
+      link.download = "38-0-brasil-campanha.png";
+      link.click();
+      URL.revokeObjectURL(imageUrl);
+
+      setShareMessage("Seu navegador não compartilha imagem direto. Baixei o PNG para você enviar no WhatsApp.");
+    } catch {
+      setShareMessage("Não consegui compartilhar. Tente baixar a imagem.");
+    } finally {
+      setIsGeneratingShareImage(false);
     }
   }
 
@@ -1935,6 +2240,15 @@ ${lineupText}`;
         <ThemeStyles />
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
         <section className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
+          <div className="fixed -left-[9999px] top-0">
+            <div ref={shareCardRef}>
+              <ResultShareCard
+                leagueResult={leagueResult}
+                selectedFormation={selectedFormation}
+                lineup={lineup}
+              />
+            </div>
+          </div>
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <button
               onClick={() => setScreen("draft")}
@@ -2084,13 +2398,61 @@ ${lineupText}`;
               </div>
             </div>
 
-            <button
-              onClick={copyResultText}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 md:w-auto"
-            >
-              <Copy size={18} />
-              {copiedResult ? "Resumo copiado!" : "Copiar resumo"}
-            </button>
+            <div className="mt-6 grid gap-3 md:grid-cols-4">
+              <button
+                onClick={generateShareImage}
+                disabled={isGeneratingShareImage}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
+              >
+                <Copy size={18} />
+                {isGeneratingShareImage ? "Gerando..." : "Gerar imagem"}
+              </button>
+
+              <button
+                onClick={downloadShareImage}
+                disabled={isGeneratingShareImage}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/75 px-5 py-4 font-black text-slate-950 transition hover:bg-white disabled:opacity-60"
+              >
+                <Download size={18} />
+                Baixar PNG
+              </button>
+
+              <button
+                onClick={shareResultImage}
+                disabled={isGeneratingShareImage}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/75 px-5 py-4 font-black text-slate-950 transition hover:bg-white disabled:opacity-60"
+              >
+                <Share2 size={18} />
+                Compartilhar
+              </button>
+
+              <button
+                onClick={copyResultText}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/75 px-5 py-4 font-black text-slate-950 transition hover:bg-white"
+              >
+                <Copy size={18} />
+                {copiedResult ? "Copiado!" : "Copiar texto"}
+              </button>
+            </div>
+
+            {shareImageUrl && (
+              <div className="mt-5 rounded-2xl border border-slate-900/10 bg-white/75 p-4">
+                <p className="mb-3 text-sm font-black text-slate-700">
+                  Prévia da imagem:
+                </p>
+                <img
+                  src={shareImageUrl}
+                  alt="Resumo da campanha"
+                  className="w-full rounded-2xl border border-slate-900/10"
+                />
+              </div>
+            )}
+
+            {shareMessage && (
+              <p className="mt-3 text-sm font-bold text-slate-500">
+                {shareMessage}
+              </p>
+            )}
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1fr_0.75fr]">
@@ -2638,7 +3000,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          VERSÃO BETA, SUJEITO A ALTERAÇÕES E ATUALIZAÇÕES
+          Futebol brasileiro histórico • v32 imagem compartilhável • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
