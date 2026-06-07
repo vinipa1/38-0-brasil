@@ -44,6 +44,12 @@ function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function getSiteShareUrl() {
+  if (typeof window === "undefined") return "38-0 Brasil";
+
+  return window.location.origin;
+}
+
 function getAverageFromNumbers(numbers, fallback = 76) {
   if (!numbers.length) return fallback;
 
@@ -1340,7 +1346,7 @@ function getShareTableWindow(table, userPosition) {
   }));
 }
 
-function ResultShareCard({ leagueResult, selectedFormation, lineup }) {
+function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
   if (!leagueResult || !selectedFormation) return null;
 
   const { userStanding, userPosition, table } = leagueResult;
@@ -1504,9 +1510,14 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup }) {
           </div>
         </div>
 
-        <p className="mt-7 text-center text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-          Monte seu XI. Simule o Brasileirão. Busque o 38–0.
-        </p>
+        <div className="mt-7 rounded-2xl bg-[#f7f0df] px-5 py-4 text-center">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
+            Monte seu XI. Simule o Brasileirão. Busque o 38–0.
+          </p>
+          <p className="mt-2 text-sm font-black text-emerald-700">
+            {siteUrl || "38-0 Brasil"}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -1805,9 +1816,8 @@ ${lineupText}`;
       throw new Error("Card de compartilhamento não foi encontrado.");
     }
 
-    // Garante que o navegador terminou de renderizar fontes/layout antes do print.
     await new Promise((resolve) => window.requestAnimationFrame(resolve));
-    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    await new Promise((resolve) => window.setTimeout(resolve, 160));
 
     const rect = element.getBoundingClientRect();
 
@@ -1817,13 +1827,10 @@ ${lineupText}`;
 
     const canvas = await html2canvas(element, {
       backgroundColor: "#f7f0df",
-      scale: Math.min(2, window.devicePixelRatio || 1.5),
+      scale: 2,
       useCORS: true,
       logging: false,
-      width: Math.ceil(rect.width),
-      height: Math.ceil(rect.height),
-      windowWidth: Math.ceil(rect.width),
-      windowHeight: Math.ceil(rect.height),
+      removeContainer: true,
     });
 
     return new Promise((resolve, reject) => {
@@ -1912,7 +1919,7 @@ ${lineupText}`;
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           title: "Minha campanha no 38–0 Brasil",
-          text: "Minha campanha no 38–0 Brasil.",
+          text: `Minha campanha no 38–0 Brasil. Jogue também: ${getSiteShareUrl()}`,
           files: [file],
         });
         setShareMessage("Compartilhamento aberto.");
@@ -2263,29 +2270,13 @@ ${lineupText}`;
   if (screen === "result" && leagueResult) {
     const { userStanding, userPosition, table, userMatches, userStrength } = leagueResult;
     const lastFive = userMatches.slice(-5);
+    const siteUrl = getSiteShareUrl();
 
     return (
       <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
         <ThemeStyles />
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
         <section className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none fixed left-0 top-0 z-[-1] opacity-0"
-            style={{
-              width: "900px",
-              height: "auto",
-              transform: "translateY(-120vh)",
-            }}
-          >
-            <div ref={shareCardRef}>
-              <ResultShareCard
-                leagueResult={leagueResult}
-                selectedFormation={selectedFormation}
-                lineup={lineup}
-              />
-            </div>
-          </div>
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <button
               onClick={() => setScreen("draft")}
@@ -2435,6 +2426,28 @@ ${lineupText}`;
               </div>
             </div>
 
+            <div className="mt-8 rounded-[2rem] border border-slate-900/10 bg-white/75 p-4">
+              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-2xl font-black">Imagem da campanha</h2>
+                  <p className="mt-1 text-sm font-bold text-slate-500">
+                    Este é o card que será baixado ou compartilhado.
+                  </p>
+                </div>
+              </div>
+
+              <div className="w-full overflow-x-auto rounded-[2rem] bg-[#f7f0df] p-3">
+                <div ref={shareCardRef} className="origin-top-left">
+                  <ResultShareCard
+                    leagueResult={leagueResult}
+                    selectedFormation={selectedFormation}
+                    lineup={lineup}
+                    siteUrl={siteUrl}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="mt-6 grid gap-3 md:grid-cols-4">
               <button
                 onClick={generateShareImage}
@@ -2475,7 +2488,7 @@ ${lineupText}`;
             {shareImageUrl && (
               <div className="mt-5 rounded-2xl border border-slate-900/10 bg-white/75 p-4">
                 <p className="mb-3 text-sm font-black text-slate-700">
-                  Prévia da imagem:
+                  PNG gerado:
                 </p>
                 <img
                   src={shareImageUrl}
@@ -3037,7 +3050,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v32.1 imagem fix • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v33 card visível • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
