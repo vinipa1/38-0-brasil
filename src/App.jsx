@@ -1703,8 +1703,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: 5,
-      width: 98,
+      gap: 7,
+      width: 116,
       textAlign: 'center',
     },
     playerBall: {
@@ -1712,8 +1712,8 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: 42,
-      height: 42,
+      width: 54,
+      height: 54,
       borderRadius: '999px',
       background: '#ffffff',
       border: '3px solid #111827',
@@ -1729,20 +1729,20 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      minWidth: 30,
-      height: 30,
-      padding: '0 6px',
+      minWidth: 38,
+      height: 38,
+      padding: '0 7px',
       borderRadius: '999px',
       background: '#ffffff',
       color: '#0f172a',
-      fontSize: 15,
+      fontSize: 18,
       fontWeight: 950,
       lineHeight: 1,
     },
     playerLabel: {
       minWidth: 0,
-      width: 98,
-      maxWidth: 98,
+      width: 116,
+      maxWidth: 116,
       borderRadius: 0,
       padding: 0,
       boxSizing: 'border-box',
@@ -1753,9 +1753,9 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
     playerName: {
       margin: 0,
       color: '#ffffff',
-      fontSize: 11,
+      fontSize: 13,
       fontWeight: 950,
-      lineHeight: 1.15,
+      lineHeight: 1.18,
       wordBreak: 'break-word',
       textShadow: '0 2px 3px rgba(0,0,0,0.65)',
     },
@@ -3474,7 +3474,7 @@ ${lineupText}`;
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center px-6 py-12 text-center">
         <div className="mb-6 flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm text-emerald-700">
           <Trophy size={18} />
-          Futebol brasileiro histórico • v36.4 arco da área corrigido • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
+          Futebol brasileiro histórico • v36.5 bolinhas maiores na arte • v21 draft refinado • v20 layout claro • v19 setores no draft • v18 simulação por setores • v17 resumo escalação • v16 resultado compartilhável • v15 nome legível • v14 nome justo • v13 nome compacto • v12 fontes ajustadas • v11 roleta • v10 bolinhas • v9 mobile compacto • v8 draft dinâmico • v7 líderes variados • v6 simulação balanceada • v5 simulação
         </div>
 
         <h1 className="max-w-3xl text-5xl font-black tracking-tight md:text-7xl">
