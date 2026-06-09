@@ -1177,13 +1177,7 @@ export const historicalTeams = [
         positions: ["LE"],
         ovr: 84,
       },
-      {
-        id: "rincon-corinthians-1998-2000",
-        name: "Rincón",
-        nationality: "🇨🇴",
-        positions: ["MC"],
-        ovr: 88,
-      },
+     
       {
         id: "vampeta-corinthians-1998-2000",
         name: "Vampeta",
@@ -4523,7 +4517,7 @@ export const historicalTeams = [
         id: "pele-santos-1962-1963",
         name: "Pelé",
         nationality: "🇧🇷",
-        positions: ["MC", "CA"],
+        positions: ["MC", "CA", "PE", "PD"],
         ovr: 99,
       },
       {
@@ -4688,7 +4682,7 @@ export const historicalTeams = [
         id: "pele-santos-1968",
         name: "Pelé",
         nationality: "🇧🇷",
-        positions: ["CA", "MC"],
+        positions: ["MC", "CA", "PE", "PD"],
         ovr: 99,
       },
       {
