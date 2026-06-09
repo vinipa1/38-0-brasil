@@ -4517,7 +4517,7 @@ export const historicalTeams = [
         id: "pele-santos-1962-1963",
         name: "Pelé",
         nationality: "🇧🇷",
-        positions: ["MC", "CA", "PE", "PD"],
+        positions: ["MC", "CA", "PD", "PE"],
         ovr: 99,
       },
       {
@@ -4682,7 +4682,7 @@ export const historicalTeams = [
         id: "pele-santos-1968",
         name: "Pelé",
         nationality: "🇧🇷",
-        positions: ["MC", "CA", "PE", "PD"],
+        positions: ["MC", "CA", "PD", "PE"],
         ovr: 99,
       },
       {
