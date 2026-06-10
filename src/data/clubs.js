@@ -64,7 +64,7 @@ export const clubs = [
     kit: {
       type: "solid",
       colors: ["#ffffff", "#111111"],
-      baseColor: "#000000",
+      baseColor: "#ffffff",
       accentColor: "#111111",
       textColor: "#111111",
     },
@@ -77,7 +77,7 @@ export const clubs = [
     state: "RJ",
     kit: {
       type: "diagonal-sash",
-      colors: ["#111111", "#ffffff"],
+      colors: ["#ffffff", "#ffffff"],
       baseColor: "#000000",
       accentColor: "#ffffff",
       textColor: "#ffffff",

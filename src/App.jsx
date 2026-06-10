@@ -1,10 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import {
   ArrowLeft,
   Check,
   Copy,
-  Download,
   LayoutGrid,
   Moon,
   Play,
@@ -25,6 +24,16 @@ import {
   getRandomBrazilianLeagueOpponents,
 } from "./data/historicalTeams";
 import { getClubById } from "./data/clubs";
+import { loadOnlineRoom } from "./services/loadOnlineRoom";
+import {
+  clearActiveRoomCode,
+  getRememberedRoomCode,
+  mapRoomStatusToScreen,
+  rememberActiveRoomCode,
+} from "./services/onlineRoomLocal";
+
+
+
 
 function canPlayerFitSlot(player, slot) {
   return player.positions.includes(slot.position);
@@ -52,11 +61,7 @@ function getAlternativeTeamVersions(team) {
   );
 }
 
-function getRandomTeamExcept(currentTeam) {
-  const teams = getTeamsWithPlayers().filter((team) => team.id !== currentTeam?.id);
 
-  return getRandomTeamFromList(teams);
-}
 
 function normalizePlayerIdentity(value = "") {
   return String(value)
@@ -263,106 +268,9 @@ function getWeightedRandomItem(items, getWeight) {
   return items[items.length - 1];
 }
 
-function getScoringWeight(lineupItem) {
-  const position = lineupItem.slotPosition;
-  const ovr = lineupItem.player.ovr;
 
-  const positionMultiplier = {
-    CA: 1.55,
-    PE: 1.2,
-    PD: 1.2,
-    MC: 0.72,
-    LD: 0.16,
-    LE: 0.16,
-    ZAG: 0.08,
-    GOL: 0,
-  };
 
-  return Math.max(0, (ovr - 58) * (positionMultiplier[position] || 0.2));
-}
 
-function getAssistWeight(lineupItem) {
-  const position = lineupItem.slotPosition;
-  const ovr = lineupItem.player.ovr;
-
-  const positionMultiplier = {
-    MC: 1.45,
-    PE: 1.15,
-    PD: 1.15,
-    CA: 0.58,
-    LD: 0.45,
-    LE: 0.45,
-    ZAG: 0.08,
-    GOL: 0,
-  };
-
-  return Math.max(0, (ovr - 58) * (positionMultiplier[position] || 0.2));
-}
-
-function generatePlayerLeaders(lineup, userStanding) {
-  const scorerCandidates = lineup.filter((item) =>
-    ["CA", "PE", "PD", "MC"].includes(item.slotPosition)
-  );
-
-  const assistCandidates = lineup.filter((item) =>
-    ["MC", "PE", "PD", "CA", "LD", "LE"].includes(item.slotPosition)
-  );
-
-  const scorerItem =
-    getWeightedRandomItem(scorerCandidates, getScoringWeight) || lineup[0];
-
-  const assistPoolWithoutScorer = assistCandidates.filter(
-    (item) => item.player.id !== scorerItem?.player.id
-  );
-
-  const assistItem =
-    getWeightedRandomItem(
-      assistPoolWithoutScorer.length ? assistPoolWithoutScorer : assistCandidates,
-      getAssistWeight
-    ) || scorerItem;
-
-  const scorerBaseShare = {
-    CA: 0.3,
-    PE: 0.23,
-    PD: 0.23,
-    MC: 0.16,
-  }[scorerItem?.slotPosition] || 0.12;
-
-  const assistBaseShare = {
-    MC: 0.25,
-    PE: 0.2,
-    PD: 0.2,
-    CA: 0.12,
-    LD: 0.1,
-    LE: 0.1,
-  }[assistItem?.slotPosition] || 0.08;
-
-  const scorerOvrBonus = ((scorerItem?.player.ovr || 80) - 80) / 220;
-  const assistOvrBonus = ((assistItem?.player.ovr || 80) - 80) / 240;
-
-  return {
-    topScorer: {
-      name: scorerItem?.player.name || "Craque do time",
-      goals: Math.max(
-        5,
-        Math.round(
-          userStanding.goalsFor *
-            clampNumber(scorerBaseShare + scorerOvrBonus + Math.random() * 0.08, 0.12, 0.42)
-        )
-      ),
-    },
-    playmaker: {
-      name: assistItem?.player.name || "Maestro do time",
-      assists: Math.max(
-        4,
-        Math.round(
-          userStanding.goalsFor *
-            clampNumber(assistBaseShare + assistOvrBonus + Math.random() * 0.07, 0.08, 0.34)
-        )
-      ),
-    },
-  };
-}
 
 function getMatchExpectation(attackingTeam, defendingTeam, homeBonus = 0) {
   const attack = getTeamAttackStrength(attackingTeam);
@@ -449,6 +357,12 @@ function createEmptyStanding(team) {
     strength: team.strength,
     sectors: team.sectors,
     isUserTeam: team.isUserTeam || false,
+    isOnlineHumanTeam: team.isOnlineHumanTeam || false,
+    ownerParticipantId: team.ownerParticipantId || null,
+    playerName: team.playerName || null,
+    formationName: team.formationName || null,
+    lineup: team.lineup || [],
+    players: team.players || [],
     played: 0,
     wins: 0,
     draws: 0,
@@ -632,7 +546,10 @@ function simulateBrazilianLeague(lineup, formation) {
         awayGoals,
         homePlayers: homeTeam.isUserTeam ? [] : homeTeam.players || [],
         awayPlayers: awayTeam.isUserTeam ? [] : awayTeam.players || [],
+        hasHumanTeam: Boolean(homeTeam.isUserTeam || awayTeam.isUserTeam),
       };
+
+      match.events = generateOnlineMatchEvents(match);
 
       if (homeTeam.isUserTeam || awayTeam.isUserTeam) {
         const userGoals = homeTeam.isUserTeam ? homeGoals : awayGoals;
@@ -900,7 +817,9 @@ function TacticalPitch({
 
   return (
     <div
-      className="relative min-h-[430px] overflow-hidden rounded-[1.5rem] border border-slate-900/10 p-3 sm:min-h-[560px] sm:rounded-[2rem] sm:p-4"
+      className={`relative min-h-[430px] overflow-hidden rounded-[1.5rem] border border-slate-900/10 p-3 transition sm:min-h-[560px] sm:rounded-[2rem] sm:p-4 ${
+        pendingSelection ? "ring-4 ring-yellow-300/70 shadow-[0_0_34px_rgba(253,224,71,0.42)]" : ""
+      }`}
       style={{
         background:
           "repeating-linear-gradient(180deg, #2f8556 0 54px, #2b7a4d 54px 108px)",
@@ -966,7 +885,7 @@ function TacticalPitch({
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-[9px] font-black shadow-lg transition sm:h-12 sm:w-12 sm:text-[11px] md:h-14 md:w-14 md:text-xs ${
                   isHighlighted
-                    ? "border-yellow-300 bg-yellow-200 text-yellow-950 shadow-[0_0_22px_rgba(253,224,71,0.55)]"
+                    ? "animate-pulse border-yellow-300 bg-yellow-200 text-yellow-950 shadow-[0_0_22px_rgba(253,224,71,0.55)]"
                     : "border-slate-900 bg-white text-slate-950"
                 }`}
               >
@@ -1107,6 +1026,313 @@ function ThemeStyles() {
       .theme-dark .event-minute-badge {
         color: #ffffff !important;
       }
+
+      .theme-dark .force-dark-text [class*="text-blue-"],
+      .theme-dark .force-dark-text [class*="text-emerald-"],
+      .theme-dark .force-dark-text [class*="text-red-"],
+      .theme-dark .force-dark-text [class*="text-yellow-"] {
+        color: inherit !important;
+      }
+
+      .theme-dark .force-dark-text .event-minute-badge,
+      .theme-dark .force-dark-text .leader-total-badge {
+        color: #ffffff !important;
+      }
+
+
+      .theme-dark .online-soft-card,
+      .theme-dark .online-soft-card *,
+      .theme-dark .online-speed-control,
+      .theme-dark .online-speed-control *,
+      .theme-dark .online-score-pill,
+      .theme-dark .online-score-pill * {
+        color: #0f172a !important;
+      }
+
+      .theme-dark .online-speed-control {
+        background: rgba(255, 255, 255, 0.94) !important;
+        border-color: rgba(255, 255, 255, 0.22) !important;
+      }
+
+      .theme-dark .online-speed-option {
+        color: #0f172a !important;
+        background: transparent !important;
+      }
+
+      .theme-dark .online-speed-option-active {
+        color: #064e3b !important;
+        background: #34d399 !important;
+      }
+
+      .theme-dark .online-score-pill {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        border-color: rgba(15, 23, 42, 0.16) !important;
+      }
+
+      .theme-dark .online-match-card-highlight,
+      .theme-dark .online-match-card-highlight * {
+        color: #0f172a !important;
+      }
+
+      .online-table-wide {
+        min-width: 360px;
+      }
+
+      @media (min-width: 1280px) {
+        .online-table-wide {
+          min-width: 430px;
+        }
+      }
+
+      @media (min-width: 1536px) {
+        .online-table-wide {
+          min-width: 500px;
+        }
+      }
+
+
+      .selected-green-card {
+        background: #34d399 !important;
+        color: #064e3b !important;
+        border-color: rgba(16, 185, 129, 0.75) !important;
+      }
+
+      .selected-green-card *,
+      .theme-dark .selected-green-card,
+      .theme-dark .selected-green-card * {
+        color: #064e3b !important;
+      }
+
+      .selected-green-card .online-score-pill,
+      .theme-dark .selected-green-card .online-score-pill {
+        background: #052e16 !important;
+        color: #ffffff !important;
+      }
+
+      .classification-panel-wide {
+        min-width: 440px;
+      }
+
+      @media (min-width: 1280px) {
+        .classification-panel-wide {
+          min-width: 520px;
+        }
+      }
+
+      @media (min-width: 1536px) {
+        .classification-panel-wide {
+          min-width: 640px;
+        }
+      }
+
+      .classification-table-scroll {
+        overflow-x: auto !important;
+      }
+
+      .classification-table-inner {
+        min-width: 500px !important;
+      }
+
+      .classification-points-cell {
+        min-width: 46px !important;
+        width: 46px !important;
+        text-align: right !important;
+        white-space: nowrap !important;
+      }
+
+      .classification-team-cell {
+        min-width: 170px !important;
+        max-width: none !important;
+      }
+
+      @media (min-width: 1280px) {
+        .classification-team-cell {
+          min-width: 230px !important;
+        }
+      }
+
+      @media (min-width: 1536px) {
+        .classification-team-cell {
+          min-width: 300px !important;
+        }
+      }
+
+      .classification-team-name {
+        max-width: none !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+
+
+      .classification-panel-wide {
+        width: 100% !important;
+        min-width: 520px !important;
+        max-width: none !important;
+      }
+
+      @media (min-width: 1280px) {
+        .classification-panel-wide {
+          min-width: 620px !important;
+        }
+      }
+
+      @media (min-width: 1536px) {
+        .classification-panel-wide {
+          min-width: 720px !important;
+        }
+      }
+
+      .classification-table-scroll {
+        overflow-x: visible !important;
+        width: 100% !important;
+      }
+
+      .classification-table-inner {
+        width: 100% !important;
+        min-width: 560px !important;
+        table-layout: auto !important;
+      }
+
+      .classification-table-inner th,
+      .classification-table-inner td {
+        white-space: nowrap !important;
+      }
+
+      .classification-team-cell,
+      .classification-team-name {
+        min-width: 220px !important;
+        max-width: 320px !important;
+        width: auto !important;
+      }
+
+      @media (min-width: 1280px) {
+        .classification-team-cell,
+        .classification-team-name {
+          min-width: 280px !important;
+          max-width: 420px !important;
+        }
+      }
+
+      .classification-points-cell {
+        min-width: 56px !important;
+        width: 56px !important;
+        max-width: none !important;
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        text-align: right !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+      }
+
+      .leader-card-readable {
+        border: 1px solid rgba(16, 185, 129, 0.45) !important;
+        box-shadow: 0 14px 32px rgba(5, 150, 105, 0.10) !important;
+      }
+
+      .leader-row-readable {
+        border: 1px solid rgba(16, 185, 129, 0.22) !important;
+      }
+
+      .theme-dark .leader-card-readable {
+        border-color: rgba(52, 211, 153, 0.52) !important;
+        background: rgba(15, 23, 42, 0.86) !important;
+      }
+
+      .theme-dark .leader-row-readable,
+      .theme-dark .leader-row-readable * {
+        color: #0f172a !important;
+      }
+
+      .leader-row-name {
+        font-size: 11px !important;
+        line-height: 1.05 !important;
+        font-weight: 950 !important;
+        letter-spacing: -0.01em !important;
+      }
+
+      .leader-row-team {
+        font-size: 8px !important;
+        line-height: 1.05 !important;
+        font-weight: 950 !important;
+        letter-spacing: 0.08em !important;
+      }
+
+      .leader-row-value {
+        min-width: 30px !important;
+        height: 24px !important;
+        font-size: 12px !important;
+        font-weight: 950 !important;
+      }
+
+      @media (max-width: 900px) {
+        .classification-panel-wide {
+          min-width: 0 !important;
+        }
+
+        .classification-table-scroll {
+          overflow-x: auto !important;
+        }
+
+        .classification-table-inner {
+          min-width: 560px !important;
+        }
+      }
+
+
+      .theme-light .highlight-outline-card {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        border-color: rgba(16, 185, 129, 0.72) !important;
+        box-shadow: inset 4px 0 0 rgba(16, 185, 129, 0.98), 0 10px 24px rgba(15, 23, 42, 0.06) !important;
+      }
+
+      .theme-light .highlight-outline-card * {
+        color: #0f172a !important;
+      }
+
+      .theme-light .highlight-outline-card .highlight-dark-pill,
+      .theme-light .highlight-outline-card [class*="bg-slate-950"] {
+        background: #020617 !important;
+        background-color: #020617 !important;
+        color: #ffffff !important;
+      }
+
+      .theme-light .highlight-outline-card .highlight-soft-pill,
+      .theme-light .highlight-outline-card [class*="bg-emerald"] {
+        background: #d1fae5 !important;
+        background-color: #d1fae5 !important;
+        color: #065f46 !important;
+      }
+
+      .theme-dark .highlight-outline-card {
+        background: #10b981 !important;
+        background-color: #10b981 !important;
+        color: #ffffff !important;
+        border-color: rgba(52, 211, 153, 0.72) !important;
+        box-shadow: 0 12px 28px rgba(16, 185, 129, 0.16) !important;
+      }
+
+      .theme-dark .highlight-outline-card * {
+        color: #ffffff !important;
+      }
+
+      .theme-dark .highlight-outline-card .highlight-dark-pill,
+      .theme-dark .highlight-outline-card [class*="bg-slate-950"] {
+        background: #020617 !important;
+        background-color: #020617 !important;
+        color: #ffffff !important;
+      }
+
+      .theme-dark .highlight-outline-card .highlight-soft-pill,
+      .theme-dark .highlight-outline-card [class*="bg-emerald"] {
+        background: rgba(255, 255, 255, 0.18) !important;
+        background-color: rgba(255, 255, 255, 0.18) !important;
+        color: #ffffff !important;
+      }
+
     `}</style>
   );
 }
@@ -1411,11 +1637,7 @@ function getPartialCampaignLeaders(matches) {
   };
 }
 
-function getPartialUserPosition(leagueResult, revealedMatches) {
-  if (!leagueResult || !revealedMatches.length) return "—";
 
-  return getPartialUserStanding(leagueResult, revealedMatches.length).position;
-}
 
 
 function getShareTableWindow(table, userPosition) {
@@ -1504,55 +1726,9 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
     return club?.kit?.textColor || '#0f172a';
   };
 
-  const hexToRgba = (hex, alpha) => {
-    if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) {
-      return `rgba(255,250,240,${alpha})`;
-    }
 
-    const normalized = hex.replace('#', '');
-    const safeHex = normalized.length === 3
-      ? normalized.split('').map((char) => char + char).join('')
-      : normalized;
 
-    const value = Number.parseInt(safeHex, 16);
 
-    if (Number.isNaN(value)) {
-      return `rgba(255,250,240,${alpha})`;
-    }
-
-    const r = (value >> 16) & 255;
-    const g = (value >> 8) & 255;
-    const b = value & 255;
-
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
-
-  const getPlayerLabelStyle = (clubId) => {
-    const club = getClubById(clubId);
-
-    if (!club) {
-      return {
-        background: 'rgba(255,250,240,0.98)',
-        border: '1px solid rgba(15,23,42,0.10)',
-        borderLeft: '5px solid rgba(15,23,42,0.25)',
-        nameColor: '#0f172a',
-        posColor: '#047857',
-      };
-    }
-
-    const { kit } = club;
-    const primary = kit.baseColor || '#ffffff';
-    const accent = kit.accentColor || primary;
-    const stripeColor = primary.toLowerCase() === '#ffffff' ? accent : primary;
-
-    return {
-      background: 'rgba(255,250,240,0.98)',
-      border: `1px solid ${hexToRgba(stripeColor, 0.38)}`,
-      borderLeft: `5px solid ${hexToRgba(stripeColor, 0.95)}`,
-      nameColor: '#0f172a',
-      posColor: '#047857',
-    };
-  };
 
   const styles = {
     card: {
@@ -1956,8 +2132,10 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
               {lineupItems.map((item) => {
                 const playerName = getShortPlayerName(item.player?.name || item.position);
                 const clubId = item.team?.clubId;
-                const background = getKitBackground(clubId);
+                const background = getKitBackground(clubId) || '#ffffff';
                 const textColor = getKitTextColor(clubId);
+                const club = getClubById(clubId);
+                const baseColor = club?.kit?.baseColor || '#ffffff';
 
                 return (
                   <div
@@ -1969,7 +2147,12 @@ function ResultShareCard({ leagueResult, selectedFormation, lineup, siteUrl }) {
                     }}
                   >
                     <div style={styles.playerBallScale}>
-                      <div style={{ ...styles.playerBall, background }}>
+                      <div 
+                        style={{ ...styles.playerBall, background, backgroundColor: baseColor }} 
+                        className="share-kit-ball" 
+                        data-kit-bg={background}
+                        data-base-color={baseColor}
+                      >
                         <div style={styles.playerBallGlow} />
                         {item.player?.ovr ? (
                           <div style={styles.playerOverall}>{item.player.ovr}</div>
@@ -2008,6 +2191,2048 @@ const LOGO_DARK_SRC = "/logo-38-0-dark.png";
 const PIX_KEY = "bcf96c05-b212-4d13-951a-7e17ee943372";
 const PIX_QR_CODE_SRC = "/pix-qrcode.png";
 
+const ONLINE_DEFAULT_CONFIG = {
+  roomName: "Sala 38–0",
+  teamName: "Meu XI",
+  playerName: "Jogador",
+  onlineMode: "league",
+  draftType: "cards",
+  difficulty: "normal",
+  pickTime: "30",
+  cardsPerTurn: 8,
+  picksPerTurn: 1,
+  duelFormat: "single",
+  duelExtraTime: true,
+  duelPenalties: true,
+};
+
+const ONLINE_LIVE_SPEED_OPTIONS = [
+  { value: "turbo", label: "Turbo", interval: 35 },
+  { value: "fast", label: "Rápida", interval: 70 },
+  { value: "normal", label: "Normal", interval: 95 },
+  { value: "slow", label: "Lenta", interval: 200 },
+];
+
+function getOnlineLiveSpeedInterval(speed) {
+  return ONLINE_LIVE_SPEED_OPTIONS.find((option) => option.value === speed)?.interval || 95;
+}
+
+function getLiveMinuteFromStartedAt(roundStartedAt, speed, maxMinute = 90) {
+  if (!roundStartedAt) return 0;
+
+  const interval = getOnlineLiveSpeedInterval(speed);
+  const elapsed = Date.now() - roundStartedAt;
+
+  return Math.min(maxMinute, Math.floor(elapsed / interval));
+}
+
+
+const ONLINE_DUEL_FORMAT_OPTIONS = [
+  { value: "single", label: "Jogo único", description: "Um jogo decide o duelo." },
+  { value: "twoLegs", label: "Ida e volta", description: "Dois jogos, um mando para cada lado." },
+  { value: "bestOf3", label: "Melhor de 3", description: "Quem vencer 2 jogos leva a série." },
+  { value: "bestOf5", label: "Melhor de 5", description: "Quem vencer 3 jogos leva a série." },
+];
+
+function getOnlineDuelFormatLabel(format) {
+  return ONLINE_DUEL_FORMAT_OPTIONS.find((option) => option.value === format)?.label || "Jogo único";
+}
+
+function getOnlineDuelMaxGames(format) {
+  if (format === "twoLegs") return 2;
+  if (format === "bestOf3") return 3;
+  if (format === "bestOf5") return 5;
+  return 1;
+}
+
+function getOnlineDuelWinsNeeded(format) {
+  if (format === "bestOf3") return 2;
+  if (format === "bestOf5") return 3;
+  return null;
+}
+
+
+function createRoomCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+}
+
+function getFormationById(formationId) {
+  return formations.find((formation) => formation.id === formationId) || formations[0];
+}
+
+function getOnlineModeLabel(mode) {
+  return mode === "duel" ? "Duelo 1v1" : "Brasileirão Online";
+}
+
+function getDraftTypeLabel(type) {
+  return type === "teams" ? "Elencos Históricos" : "Cards Aleatórios";
+}
+
+function getDifficultyLabel(difficulty) {
+  return difficulty === "expert" ? "Especialista" : "Normal";
+}
+
+function getPickTimeLabel(value) {
+  return value === "none" ? "Sem tempo" : `${value}s`;
+}
+
+function shuffleArray(items) {
+  const shuffled = [...items];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function getAllOnlinePlayerCards() {
+  return getTeamsWithPlayers().flatMap((team) =>
+    team.players.map((player) => ({
+      id: `${team.id}-${player.id}`,
+      player,
+      team,
+      identityKey: getPlayerIdentityKey(player),
+    }))
+  );
+}
+
+function getOnlineCardsFromTeam(team) {
+  if (!team) return [];
+
+  return (team.players || []).map((player) => ({
+    id: `${team.id}-${player.id}`,
+    player,
+    team,
+    identityKey: getPlayerIdentityKey(player),
+  }));
+}
+
+function getOnlineOpenSlots(participant, lineupsMap) {
+  const formation = getFormationById(participant.formationId);
+  const participantLineup = lineupsMap[participant.id] || [];
+
+  return formation.slots
+    .map((slot, index) => ({
+      ...slot,
+      index,
+      player: participantLineup.find((item) => item.slotIndex === index)?.player || null,
+    }))
+    .filter((slot) => !slot.player);
+}
+
+function canOnlineCardFitOpenSlot(card, slot) {
+  return card.player.positions.includes(slot.position);
+}
+
+function getOnlineCardCompatibleSlots(card, openSlots) {
+  return openSlots.filter((slot) => canOnlineCardFitOpenSlot(card, slot));
+}
+
+function getOnlineCurrentParticipant(order, turnIndex) {
+  if (!order.length) return null;
+
+  const roundIndex = Math.floor(turnIndex / order.length);
+  const positionInRound = turnIndex % order.length;
+  const roundOrder = roundIndex % 2 === 0 ? order : [...order].reverse();
+
+  return roundOrder[positionInRound] || null;
+}
+
+function getEligibleOnlineCardsFromPool(pool, openSlots, pickedPlayerKeys) {
+  const pickedKeys = new Set(pickedPlayerKeys);
+
+  return pool.filter((card) => {
+    if (pickedKeys.has(card.identityKey)) return false;
+    return getOnlineCardCompatibleSlots(card, openSlots).length > 0;
+  });
+}
+
+function dealOnlineRandomCards({ cardsPerTurn, lineupsMap, pickedPlayerKeys, participant }) {
+  if (!participant) return [];
+
+  const openSlots = getOnlineOpenSlots(participant, lineupsMap);
+  const pool = getEligibleOnlineCardsFromPool(
+    getAllOnlinePlayerCards(),
+    openSlots,
+    pickedPlayerKeys
+  );
+
+  return shuffleArray(pool).slice(0, Number(cardsPerTurn) || 8);
+}
+
+function dealOnlineRandomHistoricalTeam({ lineupsMap, pickedPlayerKeys, participant }) {
+  if (!participant) {
+    return {
+      team: null,
+      cards: [],
+    };
+  }
+
+  const openSlots = getOnlineOpenSlots(participant, lineupsMap);
+  const candidateTeams = shuffleArray(getTeamsWithPlayers())
+    .map((team) => {
+      const cards = getEligibleOnlineCardsFromPool(
+        getOnlineCardsFromTeam(team),
+        openSlots,
+        pickedPlayerKeys
+      );
+
+      return {
+        team,
+        cards,
+      };
+    })
+    .filter((item) => item.cards.length > 0);
+
+  const selected = candidateTeams[0];
+
+  return {
+    team: selected?.team || null,
+    cards: selected?.cards || [],
+  };
+}
+
+function dealOnlineDraftOptions({ room, lineupsMap, pickedPlayerKeys, participant }) {
+  if (room?.config?.draftType === "teams") {
+    const result = dealOnlineRandomHistoricalTeam({
+      lineupsMap,
+      pickedPlayerKeys,
+      participant,
+    });
+
+    return {
+      currentTeamOption: result.team,
+      currentCards: result.cards,
+    };
+  }
+
+  return {
+    currentTeamOption: null,
+    currentCards: dealOnlineRandomCards({
+      cardsPerTurn: room?.config?.cardsPerTurn,
+      lineupsMap,
+      pickedPlayerKeys,
+      participant,
+    }),
+  };
+}
+
+function getOnlinePicksNeededThisTurn(participant, lineupsMap, picksPerTurn) {
+  if (!participant) return 0;
+
+  const openSlots = getOnlineOpenSlots(participant, lineupsMap);
+  return Math.min(Number(picksPerTurn) || 1, openSlots.length);
+}
+
+function areOnlineLineupsComplete(order, lineupsMap) {
+  return order.every((participant) => {
+    const formation = getFormationById(participant.formationId);
+    return (lineupsMap[participant.id] || []).length >= formation.slots.length;
+  });
+}
+
+
+
+function getAverageOverallValue(items) {
+  if (!items.length) return null;
+
+  return Math.round(
+    items.reduce((sum, item) => sum + item.player.ovr, 0) / items.length
+  );
+}
+
+function getOnlineLineupSummary(lineup, formation = null) {
+  const defensePositions = ["GOL", "LD", "ZAG", "LE"];
+  const midfieldPositions = ["VOL", "MC", "MEI", "ME", "MD"];
+  const attackPositions = ["PE", "PD", "CA", "SA"];
+
+  const defenseItems = lineup.filter((item) => defensePositions.includes(item.slotPosition));
+  const midfieldItems = lineup.filter((item) => midfieldPositions.includes(item.slotPosition));
+  const attackItems = lineup.filter((item) => attackPositions.includes(item.slotPosition));
+
+  const totalSlots = formation?.slots?.length || 11;
+
+  return {
+    defense: getAverageOverallValue(defenseItems),
+    midfield: getAverageOverallValue(midfieldItems),
+    attack: getAverageOverallValue(attackItems),
+    overall: getAverageOverallValue(lineup),
+    filled: lineup.length,
+    total: totalSlots,
+    isComplete: lineup.length >= totalSlots,
+  };
+}
+
+const DATABASE_CHAMPION_442_SLOTS = [
+  { id: "gol", label: "GOL", position: "GOL", x: 50, y: 89 },
+  { id: "ld", label: "LD", position: "LD", x: 78, y: 72 },
+  { id: "zag1", label: "ZAG", position: "ZAG", x: 60, y: 75 },
+  { id: "zag2", label: "ZAG", position: "ZAG", x: 40, y: 75 },
+  { id: "le", label: "LE", position: "LE", x: 22, y: 72 },
+  { id: "md", label: "PD", position: "PD", x: 78, y: 49 },
+  { id: "mc1", label: "MC", position: "MC", x: 58, y: 51 },
+  { id: "mc2", label: "MC", position: "MC", x: 42, y: 51 },
+  { id: "me", label: "PE", position: "PE", x: 22, y: 49 },
+  { id: "ca1", label: "CA", position: "CA", x: 42, y: 24 },
+  { id: "ca2", label: "CA", position: "CA", x: 58, y: 24 },
+];
+
+function getBestUnusedPlayerForPosition(players, position, usedIds) {
+  const exactCandidates = players
+    .filter((player) => !usedIds.has(player.id) && (player.positions || []).includes(position))
+    .sort((a, b) => (b.ovr || 0) - (a.ovr || 0));
+
+  if (exactCandidates.length) return exactCandidates[0];
+
+  const fallback = players
+    .filter((player) => !usedIds.has(player.id))
+    .sort((a, b) => (b.ovr || 0) - (a.ovr || 0));
+
+  return fallback[0] || null;
+}
+
+function getDatabaseChampionBase442(players = []) {
+  const usedIds = new Set();
+
+  return DATABASE_CHAMPION_442_SLOTS.map((slot) => {
+    const player = getBestUnusedPlayerForPosition(players, slot.position, usedIds);
+
+    if (player) usedIds.add(player.id);
+
+    return {
+      ...slot,
+      player,
+    };
+  }).filter((item) => item.player);
+}
+
+function getChampionRosterForModal(champion) {
+  if (!champion) return [];
+
+  if (champion.isOnlineHumanTeam && champion.lineup?.length) {
+    return champion.lineup
+      .slice()
+      .sort((a, b) => a.slotIndex - b.slotIndex)
+      .map((item) => ({
+        id: item.player.id,
+        name: item.player.name,
+        position: item.slotPosition,
+        ovr: item.player.ovr,
+      }));
+  }
+
+  return getDatabaseChampionBase442(champion.players || []).map((item) => ({
+    id: item.player.id,
+    name: item.player.name,
+    position: item.label,
+    ovr: item.player.ovr,
+    x: item.x,
+    y: item.y,
+  }));
+}
+
+function DatabaseChampionFormation({ champion, roster }) {
+  return (
+    <div className="rounded-[1.5rem] border border-slate-900/10 bg-emerald-950/95 p-3">
+      <div className="relative h-[520px] overflow-hidden rounded-[1.25rem] border-2 border-white/35"
+        style={{
+          background: "repeating-linear-gradient(180deg, #2f8556 0 50px, #2b7a4d 50px 100px)",
+        }}
+      >
+        <div className="absolute inset-3 rounded-2xl border-2 border-white/35" />
+        <div className="absolute left-1/2 top-3 h-[11%] w-[34%] -translate-x-1/2 border-2 border-white/35 border-t-0" />
+        <div className="absolute left-1/2 bottom-3 h-[11%] w-[34%] -translate-x-1/2 border-2 border-white/35 border-b-0" />
+        <div className="absolute left-3 right-3 top-1/2 border-t-2 border-white/35" />
+        <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35" />
+
+        {roster.map((item) => (
+          <div
+            key={`${champion.id}-${item.id}-${item.position}`}
+            className="absolute flex w-24 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center"
+            style={{ left: `${item.x}%`, top: `${item.y}%` }}
+          >
+            <KitBallIcon clubId={champion.clubId} overall={item.ovr} />
+            <div className="max-w-[96px] rounded-xl bg-white px-2 py-1 shadow-[0_5px_14px_rgba(15,23,42,0.18)]">
+              <p className="truncate text-[10px] font-black leading-tight text-slate-950">{item.name}</p>
+              <p className="text-[8px] font-black uppercase tracking-[0.12em] text-emerald-700">{item.position}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OnlineLiveSpeedControl({ value, onChange, compact = false, disabled = false }) {
+  return (
+    <div className={`rounded-2xl border border-slate-900/10 bg-white/75 ${compact ? "p-2" : "p-3"} ${disabled ? "opacity-60" : ""}`}>
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+        Velocidade da rodada
+      </p>
+      <div className="grid grid-cols-4 gap-1.5">
+        {ONLINE_LIVE_SPEED_OPTIONS.map((option) => {
+          const isActive = value === option.value;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(option.value)}
+              className={`rounded-xl px-2 py-2 text-[10px] font-black transition disabled:cursor-not-allowed ${
+                isActive
+                  ? "force-dark-text bg-emerald-300 text-emerald-950 shadow-[0_8px_18px_rgba(16,185,129,0.18)]"
+                  : "bg-slate-50 text-slate-600 hover:bg-white"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OnlineTeamSummaryStats({ summary, revealValues = true, compact = false }) {
+  const items = [
+    { label: "DEF", value: summary.defense },
+    { label: "MEI", value: summary.midfield },
+    { label: "ATA", value: summary.attack },
+    { label: "GERAL", value: summary.overall },
+  ];
+
+  return (
+    <div className={`grid grid-cols-4 ${compact ? "gap-1.5" : "gap-2"}`}>
+      {items.map((item) => {
+        const isOverall = item.label === "GERAL";
+
+        return (
+          <div
+            key={item.label}
+            className={`rounded-2xl text-center ${compact ? "px-2 py-2" : "px-3 py-3"} ${
+              isOverall ? "force-dark-text bg-emerald-300 text-emerald-950" : "bg-slate-50"
+            }`}
+          >
+            <p
+              className={`text-[9px] font-black uppercase tracking-[0.14em] ${
+                isOverall ? "text-emerald-950/70" : "text-slate-500"
+              }`}
+            >
+              {item.label}
+            </p>
+            <p
+              className={`${compact ? "text-base" : "text-xl"} mt-1 font-black ${
+                isOverall ? "text-emerald-950" : "text-slate-950"
+              }`}
+            >
+              {revealValues ? item.value ?? "—" : "?"}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function getStandingZone(position, total = 20) {
+  if (position === 1) {
+    return {
+      key: "campeao-libertadores",
+      label: "LIB",
+      title: "Líder e zona de Libertadores",
+      rowClass: "border-l-4 border-l-yellow-400",
+      positionClass: "text-yellow-600",
+      pillClass: "bg-blue-50 text-blue-700 ring-blue-100",
+      leaderClass: "bg-yellow-100 text-yellow-800 ring-yellow-200",
+    };
+  }
+
+  if (position <= 6) {
+    return {
+      key: "libertadores",
+      label: "LIB",
+      title: "Zona de Libertadores",
+      rowClass: "border-l-4 border-l-blue-500",
+      positionClass: "text-blue-600",
+      pillClass: "bg-blue-50 text-blue-700 ring-blue-100",
+      leaderClass: "",
+    };
+  }
+
+  if (position <= 12) {
+    return {
+      key: "sulamericana",
+      label: "SULA",
+      title: "Zona de Sul-Americana",
+      rowClass: "border-l-4 border-l-emerald-500",
+      positionClass: "text-emerald-600",
+      pillClass: "bg-emerald-300 text-emerald-700 ring-emerald-100",
+    };
+  }
+
+  if (position > Math.max(0, total - 4)) {
+    return {
+      key: "rebaixamento",
+      label: "Z4",
+      title: "Zona de rebaixamento",
+      rowClass: "border-l-4 border-l-red-500",
+      positionClass: "text-red-600",
+      pillClass: "bg-red-50 text-red-700 ring-red-100",
+    };
+  }
+
+  return {
+    key: "meio",
+    label: "—",
+    title: "Meio da tabela",
+    rowClass: "border-l-4 border-l-transparent",
+    positionClass: "text-slate-500",
+    pillClass: "bg-slate-50 text-slate-500 ring-slate-100",
+  };
+}
+
+function getStandingPercentage(team) {
+  if (!team?.played) return 0;
+
+  return Math.round((team.points / (team.played * 3)) * 100);
+}
+
+function StandingLegend() {
+  const items = [
+    { label: "1º líder", className: "bg-yellow-400" },
+    { label: "2º–6º Libertadores", className: "bg-blue-500" },
+    { label: "7º–12º Sul-Americana", className: "bg-emerald-3000" },
+    { label: "17º–20º Rebaixamento", className: "bg-red-500" },
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+      {items.map((item) => (
+        <span
+          key={item.label}
+          className="force-dark-text inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 ring-1 ring-slate-900/5"
+        >
+          <span className={`h-2 w-2 rounded-full ${item.className}`} />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LeagueStandingsTable({
+  table,
+  limit = null,
+  highlightUser = false,
+  highlightHuman = false,
+  compact = false,
+  emptyMessage = "A classificação aparece depois da primeira rodada.",
+}) {
+  const displayedTable = limit ? table.slice(0, limit) : table;
+
+  if (!displayedTable.length) {
+    return (
+      <p className="rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
+        {emptyMessage}
+      </p>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <StandingLegend />
+
+        <div className="rounded-[1.5rem] border border-slate-900/10 bg-white/75 p-2 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+          <div className="grid grid-cols-[42px_minmax(0,1fr)_64px] gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+            <span>#</span>
+            <span>Time</span>
+            <span className="text-right">P</span>
+          </div>
+
+          <div className="mt-2 grid gap-1.5">
+            {displayedTable.map((team, index) => {
+              const position = index + 1;
+              const zone = getStandingZone(position, table.length || 20);
+              const isHighlighted =
+                (highlightUser && team.isUserTeam) ||
+                (highlightHuman && team.isOnlineHumanTeam);
+
+              return (
+                <div
+                  key={team.id}
+                  className={`grid grid-cols-[42px_minmax(0,1fr)_64px] items-center gap-2 rounded-2xl border px-3 py-3 text-sm transition ${
+                    isHighlighted
+                      ? "highlight-outline-card border-emerald-400 bg-white text-slate-950 shadow-[0_10px_24px_rgba(16,185,129,0.08)]"
+                      : "border-slate-900/10 bg-white/80 text-slate-950"
+                  }`}
+                >
+                  <span className={`font-black ${isHighlighted ? "text-slate-950" : zone.positionClass}`}>{position}</span>
+
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className={`truncate text-sm font-black ${isHighlighted ? "text-slate-950" : "text-slate-950"}`} title={team.label}>
+                        {team.label}
+                      </p>
+                      {isHighlighted && (
+                        <span className="highlight-soft-pill shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-emerald-200">
+                          Seu
+                        </span>
+                      )}
+                      {zone.key !== "meio" && (
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ring-1 ${
+                          isHighlighted ? "highlight-soft-pill bg-emerald-100 text-emerald-700 ring-emerald-200" : zone.pillClass
+                        }`}>
+                          {zone.label}
+                        </span>
+                      )}
+                    </div>
+                    {team.isOnlineHumanTeam && team.playerName && (
+                      <p className={`mt-0.5 truncate text-[10px] font-bold ${isHighlighted ? "text-slate-500" : "text-slate-500"}`}>
+                        Player: {team.playerName}
+                      </p>
+                    )}
+                  </div>
+
+                  <span className={`text-right text-base font-black ${isHighlighted ? "text-slate-950" : "text-slate-950"}`}>
+                    {team.points}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {limit && table.length > limit && (
+          <p className="text-center text-[11px] font-bold text-slate-500">
+            Mostrando top {limit}. A tabela completa aparece na classificação final.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <StandingLegend />
+
+      <div className="overflow-hidden rounded-[1.5rem] border border-slate-900/10 bg-white/75 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+        <div className="hidden md:block">
+          <div className="force-dark-text grid grid-cols-[52px_minmax(170px,1fr)_58px_44px_44px_44px_44px_54px_54px_54px_58px] border-b border-slate-900/10 bg-slate-50/85 px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+            <span>#</span>
+            <span>Time</span>
+            <span className="text-center">P</span>
+            <span className="text-center">J</span>
+            <span className="text-center">V</span>
+            <span className="text-center">E</span>
+            <span className="text-center">D</span>
+            <span className="text-center">GP</span>
+            <span className="text-center">GC</span>
+            <span className="text-center">SG</span>
+            <span className="text-center">%</span>
+          </div>
+
+          <div className="divide-y divide-slate-900/8">
+            {displayedTable.map((team, index) => {
+              const position = index + 1;
+              const zone = getStandingZone(position, table.length || 20);
+              const isHighlighted =
+                (highlightUser && team.isUserTeam) ||
+                (highlightHuman && team.isOnlineHumanTeam);
+
+              return (
+                <div
+                  key={team.id}
+                  className={`grid grid-cols-[52px_minmax(170px,1fr)_58px_44px_44px_44px_44px_54px_54px_54px_58px] items-center px-4 py-3 text-sm transition ${zone.rowClass} ${
+                    isHighlighted ? "highlight-outline-card bg-white" : "bg-white/55 hover:bg-white/85"
+                  }`}
+                >
+                  <span className={`font-black ${zone.positionClass}`}>{position}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="classification-team-name truncate font-black text-slate-950">{team.label}</p>
+                      {isHighlighted && (
+                        <span className="highlight-soft-pill rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                          Seu
+                        </span>
+                      )}
+                      {zone.key !== "meio" && (
+                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ring-1 ${zone.pillClass}`}>
+                          {zone.label}
+                        </span>
+                      )}
+                    </div>
+                    {team.isOnlineHumanTeam && team.playerName && (
+                      <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">
+                        Player: {team.playerName}
+                      </p>
+                    )}
+                  </div>
+                  <span className="classification-points-cell text-center text-base font-black text-slate-950">{team.points}</span>
+                  <span className="text-center font-bold text-slate-600">{team.played}</span>
+                  <span className="text-center font-bold text-slate-600">{team.wins}</span>
+                  <span className="text-center font-bold text-slate-600">{team.draws}</span>
+                  <span className="text-center font-bold text-slate-600">{team.losses}</span>
+                  <span className="text-center font-bold text-slate-600">{team.goalsFor}</span>
+                  <span className="text-center font-bold text-slate-600">{team.goalsAgainst}</span>
+                  <span className={`text-center font-black ${team.goalDifference >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                    {team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference}
+                  </span>
+                  <span className="text-center font-black text-slate-700">{getStandingPercentage(team)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-900/10 md:hidden">
+          {displayedTable.map((team, index) => {
+            const position = index + 1;
+            const zone = getStandingZone(position, table.length || 20);
+            const isHighlighted =
+              (highlightUser && team.isUserTeam) ||
+              (highlightHuman && team.isOnlineHumanTeam);
+
+            return (
+              <div
+                key={team.id}
+                className={`p-4 ${zone.rowClass} ${isHighlighted ? "highlight-outline-card bg-white" : "bg-white/60"}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-base font-black ${zone.positionClass}`}>{position}</span>
+                      <p className="classification-team-name truncate text-base font-black text-slate-950">{team.label}</p>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {zone.key !== "meio" && (
+                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ring-1 ${zone.pillClass}`}>
+                          {zone.label}
+                        </span>
+                      )}
+                      {isHighlighted && (
+                        <span className="highlight-soft-pill rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                          Seu time
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="classification-points-cell text-2xl font-black text-slate-950">{team.points}</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">pts</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-7 gap-1 rounded-2xl bg-slate-50/90 p-2 text-center text-[11px] font-black">
+                  <div><p className="text-slate-500">J</p><p>{team.played}</p></div>
+                  <div><p className="text-slate-500">V</p><p>{team.wins}</p></div>
+                  <div><p className="text-slate-500">E</p><p>{team.draws}</p></div>
+                  <div><p className="text-slate-500">D</p><p>{team.losses}</p></div>
+                  <div><p className="text-slate-500">GP</p><p>{team.goalsFor}</p></div>
+                  <div><p className="text-slate-500">GC</p><p>{team.goalsAgainst}</p></div>
+                  <div><p className="text-slate-500">SG</p><p className={team.goalDifference >= 0 ? "text-emerald-700" : "text-red-600"}>{team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference}</p></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {limit && table.length > limit && (
+        <p className="text-center text-[11px] font-bold text-slate-500">
+          Mostrando top {limit}. A tabela completa aparece na classificação final.
+        </p>
+      )}
+    </div>
+  );
+}
+
+
+function createOnlineSimulationTeam(participant, lineup) {
+  const formation = getFormationById(participant.formationId);
+  const strength = getLineupStrength(lineup);
+
+  return normalizeTeamForSimulation({
+    id: `online-${participant.id}`,
+    clubId: `online-${participant.id}`,
+    club: participant.teamName,
+    label: participant.teamName,
+    era: formation.name,
+    type: "Player",
+    strength,
+    isUserTeam: false,
+    isOnlineHumanTeam: true,
+    ownerParticipantId: participant.id,
+    playerName: participant.playerName,
+    formationName: formation.name,
+    lineup,
+  });
+}
+
+function simulateOnlineBrazilianLeague(room, draftOrder, lineupsMap) {
+  const humanTeams = draftOrder.map((participant) =>
+    createOnlineSimulationTeam(participant, lineupsMap[participant.id] || [])
+  );
+  const databaseTeamsNeeded = Math.max(0, 20 - humanTeams.length);
+  const databaseTeams = getRandomBrazilianLeagueOpponents(databaseTeamsNeeded).map((team) =>
+    normalizeTeamForSimulation(team)
+  );
+  const leagueTeams = [...humanTeams, ...databaseTeams];
+  const schedule = createRoundRobinSchedule(leagueTeams);
+  const standingsMap = createStandingsFromTeams(leagueTeams);
+
+  const rounds = schedule.map((roundMatches, roundIndex) => {
+    const roundNumber = roundIndex + 1;
+    const simulatedMatches = roundMatches.map(({ homeTeam, awayTeam }) => {
+      const { homeGoals, awayGoals } = generateMatchScore(homeTeam, awayTeam);
+
+      applyMatchToStandings(standingsMap, homeTeam, awayTeam, homeGoals, awayGoals);
+
+      const match = {
+        round: roundNumber,
+        homeTeam,
+        awayTeam,
+        home: homeTeam.label,
+        away: awayTeam.label,
+        homeGoals,
+        awayGoals,
+        hasHumanTeam: Boolean(homeTeam.isOnlineHumanTeam || awayTeam.isOnlineHumanTeam),
+      };
+
+      return {
+        ...match,
+        events: generateOnlineMatchEvents(match),
+      };
+    });
+
+    return {
+      round: roundNumber,
+      matches: simulatedMatches,
+    };
+  });
+
+  const table = getSortedTableFromStandingsMap(standingsMap);
+
+  return {
+    room,
+    leagueTeams,
+    humanTeams,
+    rounds,
+    table,
+  };
+}
+
+function slimLeagueTeamForFirestore(team) {
+  if (!team) return null;
+
+  return {
+    id: team.id,
+    clubId: team.clubId,
+    club: team.club,
+    label: team.label,
+    era: team.era,
+    type: team.type,
+    strength: team.strength,
+    isUserTeam: team.isUserTeam ?? null,
+    isOnlineHumanTeam: team.isOnlineHumanTeam ?? null,
+    ownerParticipantId: team.ownerParticipantId ?? null,
+    playerName: team.playerName ?? null,
+    formationName: team.formationName ?? null,
+    lineup: (team.lineup || []).map((item) => ({
+      slotIndex: item.slotIndex,
+      slotPosition: item.slotPosition,
+      player: {
+        id: item.player?.id,
+        name: item.player?.name,
+        ovr: item.player?.ovr,
+        positions: item.player?.positions || [],
+      },
+      team: {
+        clubId: item.team?.clubId,
+        label: item.team?.label,
+        club: item.team?.club,
+      },
+    })),
+    players: (team.players || []).map((player) => ({
+      id: player.id,
+      name: player.name,
+      ovr: player.ovr,
+      positions: player.positions || [],
+    })),
+  };
+}
+
+function slimLeagueEventForFirestore(event) {
+  if (!event) return null;
+
+  return {
+    id: event.id,
+    type: event.type,
+    icon: event.icon,
+    minute: event.minute,
+    side: event.side,
+    teamId: event.teamId,
+    teamLabel: event.teamLabel,
+    title: event.title,
+    description: event.description,
+    playerName: event.playerName || null,
+    assistName: event.assistName || null,
+  };
+}
+
+function slimLeagueResultForFirestore(result) {
+  if (!result) return null;
+
+  return {
+    leagueTeams: (result.leagueTeams || []).map(slimLeagueTeamForFirestore),
+    table: (result.table || []).map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      clubId: entry.clubId,
+      points: entry.points,
+      wins: entry.wins,
+      draws: entry.draws,
+      losses: entry.losses,
+      goalsFor: entry.goalsFor,
+      goalsAgainst: entry.goalsAgainst,
+      goalDifference: entry.goalDifference,
+      isOnlineHumanTeam: entry.isOnlineHumanTeam ?? null,
+      ownerParticipantId: entry.ownerParticipantId ?? null,
+      playerName: entry.playerName ?? null,
+    })),
+    rounds: (result.rounds || []).map((round) => ({
+      round: round.round,
+      matches: (round.matches || []).map((match) => ({
+        round: match.round,
+        homeTeamId: match.homeTeam?.id ?? null,
+        awayTeamId: match.awayTeam?.id ?? null,
+        home: match.home,
+        away: match.away,
+        homeGoals: match.homeGoals,
+        awayGoals: match.awayGoals,
+        hasHumanTeam: match.hasHumanTeam,
+        events: (match.events || []).map(slimLeagueEventForFirestore),
+      })),
+    })),
+    _slim: true,
+  };
+}
+
+function hydrateLeagueResultFromFirestore(stored) {
+  if (!stored) return null;
+  if (!stored._slim) {
+    return {
+      ...stored,
+      humanTeams: (stored.humanTeams || stored.leagueTeams || []).filter(
+        (team) => team.isOnlineHumanTeam
+      ),
+    };
+  }
+
+  const teamById = Object.fromEntries(
+    (stored.leagueTeams || []).map((team) => [team.id, team])
+  );
+
+  const hydrated = {
+    ...stored,
+    rounds: (stored.rounds || []).map((round) => ({
+      ...round,
+      matches: (round.matches || []).map((match) => ({
+        ...match,
+        homeTeam: teamById[match.homeTeamId],
+        awayTeam: teamById[match.awayTeamId],
+      })),
+    })),
+  };
+
+  hydrated.humanTeams = (hydrated.leagueTeams || []).filter((team) => team.isOnlineHumanTeam);
+
+  return hydrated;
+}
+
+function shouldStayOnOnlineSetupScreen(currentScreen) {
+  return ["online-home", "online-setup", "online-join", "online-matchmaking"].includes(currentScreen);
+}
+
+function getOnlineScreenForRoom(room) {
+  return mapRoomStatusToScreen(room?.status);
+}
+
+function buildOnlineLiveRoundFromRoom(room) {
+  if (room?.status !== "league" || !room.liveRound) return null;
+
+  const leagueResult = hydrateLeagueResultFromFirestore(room.leagueResult);
+  const round = leagueResult?.rounds?.find((entry) => entry.round === room.liveRound.roundNumber);
+
+  if (!round) return null;
+
+  const speed = room.liveSpeed || "normal";
+  const minute = room.liveRound.roundStartedAt
+    ? getLiveMinuteFromStartedAt(room.liveRound.roundStartedAt, speed)
+    : room.liveRound.minute || 0;
+
+  return {
+    round,
+    minute,
+    roundStartedAt: room.liveRound.roundStartedAt || null,
+  };
+}
+
+function buildOnlineDuelLiveFromRoom(room) {
+  if (room?.status !== "duel" || !room.duelLive || !room.duelResult?.matches?.length) return null;
+
+  const match = room.duelResult.matches[room.duelLive.matchIndex];
+  if (!match) return null;
+
+  const speed = room.liveSpeed || "normal";
+  const endMinute = getDuelLiveEndMinute(match);
+  const minute = room.duelLive.roundStartedAt
+    ? getLiveMinuteFromStartedAt(room.duelLive.roundStartedAt, speed, endMinute)
+    : room.duelLive.minute || 0;
+
+  return {
+    match,
+    matchIndex: room.duelLive.matchIndex,
+    minute,
+    roundStartedAt: room.duelLive.roundStartedAt || null,
+    isFinished: Boolean(room.duelLive.isFinished),
+  };
+}
+
+function getPartialOnlineLeagueTable(onlineLeagueResult, revealedRounds) {
+  if (!onlineLeagueResult?.rounds?.length) return [];
+
+  const standingsMap = createStandingsFromTeams(onlineLeagueResult.leagueTeams || []);
+  const roundsToApply = onlineLeagueResult.rounds.slice(0, revealedRounds);
+
+  roundsToApply.forEach((round) => {
+    round.matches.forEach((match) => {
+      applyMatchToStandings(
+        standingsMap,
+        match.homeTeam,
+        match.awayTeam,
+        match.homeGoals,
+        match.awayGoals
+      );
+    });
+  });
+
+  return getSortedTableFromStandingsMap(standingsMap);
+}
+
+function getHumanOnlineRanking(table) {
+  return table
+    .filter((team) => team.isOnlineHumanTeam)
+    .map((team) => ({
+      ...team,
+      overallPosition: table.findIndex((tableTeam) => tableTeam.id === team.id) + 1,
+    }));
+}
+
+
+function getOnlineTeamPlayersForEvents(team) {
+  if (team?.lineup?.length) {
+    return team.lineup.map((item) => ({
+      id: item.player.id,
+      name: item.player.name,
+      ovr: item.player.ovr,
+      positions: [item.slotPosition, ...(item.player.positions || [])],
+    }));
+  }
+
+  return team?.players || [];
+}
+
+function getOnlineEventPlayerWeight(player, context = "goal") {
+  const positions = player.positions || [];
+  const ovrPower = Math.max(1, (player.ovr || 75) - 60);
+
+  if (context === "card") {
+    if (positions.includes("ZAG")) return ovrPower * 1.35;
+    if (positions.includes("LD") || positions.includes("LE")) return ovrPower * 1.15;
+    if (positions.includes("MC")) return ovrPower * 1.05;
+    if (positions.includes("GOL")) return ovrPower * 0.08;
+    return ovrPower * 0.55;
+  }
+
+  if (context === "assist") {
+    if (positions.includes("MC")) return ovrPower * 1.45;
+    if (positions.includes("PE") || positions.includes("PD")) return ovrPower * 1.18;
+    if (positions.includes("LD") || positions.includes("LE")) return ovrPower * 0.58;
+    if (positions.includes("CA")) return ovrPower * 0.52;
+    return ovrPower * 0.16;
+  }
+
+  if (positions.includes("CA")) return ovrPower * 1.5;
+  if (positions.includes("PE") || positions.includes("PD")) return ovrPower * 1.22;
+  if (positions.includes("MC")) return ovrPower * 0.78;
+  if (positions.includes("LD") || positions.includes("LE")) return ovrPower * 0.18;
+  if (positions.includes("ZAG")) return ovrPower * 0.08;
+  return 0;
+}
+
+function pickOnlineEventPlayer(team, context = "goal", blockedId = null) {
+  const players = getOnlineTeamPlayersForEvents(team).filter((player) => player.id !== blockedId);
+  const nonGoalkeepers = players.filter((player) => !(player.positions || []).includes("GOL"));
+  const pool = nonGoalkeepers.length ? nonGoalkeepers : players;
+
+  if (!pool.length) return null;
+
+  return getWeightedRandomItem(pool, (player) => getOnlineEventPlayerWeight(player, context));
+}
+
+function getUniqueEventMinute(usedMinutes, min = 2, max = 90) {
+  let minute = Math.floor(min + Math.random() * (max - min + 1));
+  let guard = 0;
+
+  while (usedMinutes.has(minute) && guard < 120) {
+    minute = minute >= max ? min : minute + 1;
+    guard += 1;
+  }
+
+  usedMinutes.add(minute);
+  return minute;
+}
+
+function getOnlineGoalDescription(scorer, assist) {
+  const scorerName = scorer?.name || "O atacante";
+  const assistName = assist?.name || null;
+
+  const assistedTemplates = [
+    `${assistName} acha ${scorerName} na área, e ele finaliza no canto.`,
+    `${assistName} levanta na medida e ${scorerName} aparece para completar.`,
+    `${assistName} puxa o ataque e deixa ${scorerName} em ótima condição para marcar.`,
+    `${assistName} cruza com precisão, ${scorerName} sobe firme e manda para o gol.`,
+  ];
+
+  const soloTemplates = [
+    `${scorerName} recebe perto da área, ajeita o corpo e bate colocado.`,
+    `${scorerName} aproveita sobra na entrada da área e finaliza sem chance.`,
+    `${scorerName} ganha da marcação e toca na saída do goleiro.`,
+    `${scorerName} aparece no momento certo e empurra para o fundo da rede.`,
+  ];
+
+  const templates = assistName ? assistedTemplates : soloTemplates;
+  return templates[Math.floor(Math.random() * templates.length)];
+}
+
+function generateOnlineMatchEvents(match) {
+  const events = [];
+  const usedMinutes = new Set();
+  const totalGoals = match.homeGoals + match.awayGoals;
+
+  function goalMinute(goalIndex) {
+    let minute = Math.round(((goalIndex + 1) * 90) / (totalGoals + 1));
+    minute += Math.floor(Math.random() * 15) - 7;
+    minute = clampNumber(minute, 3, 90);
+
+    while (usedMinutes.has(minute)) {
+      minute = clampNumber(minute + 1, 3, 90);
+    }
+
+    usedMinutes.add(minute);
+    return minute;
+  }
+
+  function addGoal(side, goalIndex) {
+    const team = side === "home" ? match.homeTeam : match.awayTeam;
+    const scorer = pickOnlineEventPlayer(team, "goal");
+    const assist = Math.random() < 0.7 ? pickOnlineEventPlayer(team, "assist", scorer?.id) : null;
+
+    events.push({
+      id: `${match.round}-${match.homeTeam.id}-${match.awayTeam.id}-${side}-goal-${goalIndex}`,
+      type: "goal",
+      icon: "⚽",
+      minute: goalMinute(events.filter((event) => event.type === "goal").length),
+      side,
+      teamId: team.id,
+      teamLabel: team.label,
+      title: `Gol de ${scorer?.name || team.label}`,
+      description: getOnlineGoalDescription(scorer, assist),
+      playerName: scorer?.name || null,
+      assistName: assist?.name || null,
+    });
+  }
+
+  for (let goal = 0; goal < match.homeGoals; goal += 1) addGoal("home", goal);
+  for (let goal = 0; goal < match.awayGoals; goal += 1) addGoal("away", goal);
+
+  return events.sort((a, b) => a.minute - b.minute);
+}
+
+function createOnlineExtraGoalEvent(match, side, minute, index) {
+  const team = side === "home" ? match.homeTeam : match.awayTeam;
+  const scorer = pickOnlineEventPlayer(team, "goal");
+  const assist = Math.random() < 0.62 ? pickOnlineEventPlayer(team, "assist", scorer?.id) : null;
+
+  return {
+    id: `${match.round}-${match.homeTeam.id}-${match.awayTeam.id}-extra-${side}-${index}`,
+    type: "goal",
+    icon: "⚽",
+    minute,
+    side,
+    teamId: team.id,
+    teamLabel: team.label,
+    title: `Gol de ${scorer?.name || team.label} na prorrogação`,
+    description: getOnlineGoalDescription(scorer, assist),
+    playerName: scorer?.name || null,
+    assistName: assist?.name || null,
+    phase: "extraTime",
+  };
+}
+
+function addExtraTimeToDuelMatch(match, homeExtraGoals = 0, awayExtraGoals = 0) {
+  const extraEvents = [];
+  const usedExtraMinutes = new Set();
+
+  function getExtraMinute(goalIndex) {
+    let minute = 96 + goalIndex * 8 + Math.floor(Math.random() * 7);
+    minute = clampNumber(minute, 91, 120);
+
+    while (usedExtraMinutes.has(minute)) {
+      minute = clampNumber(minute + 1, 91, 120);
+    }
+
+    usedExtraMinutes.add(minute);
+    return minute;
+  }
+
+  for (let index = 0; index < homeExtraGoals; index += 1) {
+    extraEvents.push(createOnlineExtraGoalEvent(match, "home", getExtraMinute(extraEvents.length), index));
+  }
+
+  for (let index = 0; index < awayExtraGoals; index += 1) {
+    extraEvents.push(createOnlineExtraGoalEvent(match, "away", getExtraMinute(extraEvents.length), index));
+  }
+
+  return {
+    ...match,
+    extraTimeGoals: {
+      homeGoals: homeExtraGoals,
+      awayGoals: awayExtraGoals,
+    },
+    events: [...(match.events || []), ...extraEvents].sort((a, b) => a.minute - b.minute),
+  };
+}
+
+function getPenaltyTaker(team, index) {
+  const players = getOnlineTeamPlayersForEvents(team).filter((player) => !player.positions?.includes("GOL"));
+  const ordered = [...players].sort((a, b) => (b.ovr || 0) - (a.ovr || 0));
+  return ordered[index % Math.max(1, ordered.length)] || ordered[0] || { name: team.label };
+}
+
+function generatePenaltyShootout(homeTeam, awayTeam) {
+  const attempts = [];
+  let homeGoals = 0;
+  let awayGoals = 0;
+
+  for (let index = 0; index < 5; index += 1) {
+    const homeTaker = getPenaltyTaker(homeTeam, index);
+    const homeScored = Math.random() < 0.76;
+    if (homeScored) homeGoals += 1;
+    attempts.push({
+      order: attempts.length,
+      side: "home",
+      teamId: homeTeam.id,
+      teamLabel: homeTeam.label,
+      taker: homeTaker?.name || homeTeam.label,
+      scored: homeScored,
+      title: homeScored ? "Gol!" : "Perdeu!",
+      description: homeScored
+        ? `${homeTaker?.name || homeTeam.label} bate com categoria e converte.`
+        : `${homeTaker?.name || homeTeam.label} cobra, mas o goleiro leva a melhor.`,
+    });
+
+    const awayTaker = getPenaltyTaker(awayTeam, index);
+    let awayScored = Math.random() < 0.76;
+
+    if (index === 4 && homeGoals === awayGoals + (awayScored ? 1 : 0)) {
+      awayScored = !awayScored;
+    }
+
+    if (awayScored) awayGoals += 1;
+    attempts.push({
+      order: attempts.length,
+      side: "away",
+      teamId: awayTeam.id,
+      teamLabel: awayTeam.label,
+      taker: awayTaker?.name || awayTeam.label,
+      scored: awayScored,
+      title: awayScored ? "Gol!" : "Perdeu!",
+      description: awayScored
+        ? `${awayTaker?.name || awayTeam.label} desloca o goleiro e marca.`
+        : `${awayTaker?.name || awayTeam.label} para na defesa do goleiro.`,
+    });
+  }
+
+  if (homeGoals === awayGoals) {
+    const lastAway = [...attempts].reverse().find((attempt) => attempt.side === "away");
+    if (lastAway) {
+      if (lastAway.scored) {
+        lastAway.scored = false;
+        lastAway.title = "Perdeu!";
+        lastAway.description = `${lastAway.taker} cobra, mas o goleiro defende e decide a disputa.`;
+        awayGoals -= 1;
+      } else {
+        lastAway.scored = true;
+        lastAway.title = "Gol!";
+        lastAway.description = `${lastAway.taker} converte e decide a disputa.`;
+        awayGoals += 1;
+      }
+    }
+  }
+
+  return {
+    attempts,
+    homeGoals,
+    awayGoals,
+  };
+}
+
+function getPenaltyStartMinute(match) {
+  if (!match?.penalties) return null;
+
+  return match.extraTimeGoals ? 120 : 90;
+}
+
+function getDuelLiveEndMinute(match) {
+  if (match?.penalties) {
+    const penaltyStartMinute = getPenaltyStartMinute(match) || 90;
+    return penaltyStartMinute + Math.max(10, match.penalties.attempts?.length || 10);
+  }
+
+  if (match?.extraTimeGoals) return 120;
+  return 90;
+}
+
+function getDuelLivePhaseLabel(match, minute) {
+  const penaltyStartMinute = getPenaltyStartMinute(match);
+
+  if (match?.penalties && penaltyStartMinute !== null && minute > penaltyStartMinute) {
+    return "Pênaltis";
+  }
+
+  if (match?.extraTimeGoals && minute > 90) return `Prorrogação: ${minute}'`;
+  return `Tempo: ${minute}'`;
+}
+
+function getRevealedPenaltyAttempts(match, minute) {
+  const penaltyStartMinute = getPenaltyStartMinute(match);
+
+  if (!match?.penalties || penaltyStartMinute === null || minute <= penaltyStartMinute) return [];
+
+  const revealCount = clampNumber(
+    Math.floor((minute - penaltyStartMinute - 1) / 1) + 1,
+    0,
+    match.penalties.attempts.length
+  );
+
+  return match.penalties.attempts.slice(0, revealCount);
+}
+
+function getPenaltyScoreFromAttempts(attempts = []) {
+  return {
+    homeGoals: attempts.filter((attempt) => attempt.side === "home" && attempt.scored).length,
+    awayGoals: attempts.filter((attempt) => attempt.side === "away" && attempt.scored).length,
+  };
+}
+
+function PenaltyShootoutPanel({ match, minute }) {
+  const penaltyStartMinute = getPenaltyStartMinute(match);
+
+  if (!match?.penalties || penaltyStartMinute === null || minute <= penaltyStartMinute) return null;
+
+  const revealedAttempts = getRevealedPenaltyAttempts(match, minute);
+  const score = getPenaltyScoreFromAttempts(revealedAttempts);
+  const latestAttempt = revealedAttempts[revealedAttempts.length - 1] || null;
+
+  const renderDots = (side) => {
+    const attempts = revealedAttempts.filter((attempt) => attempt.side === side).slice(0, 5);
+
+    return Array.from({ length: 5 }).map((_, index) => {
+      const attempt = attempts[index];
+      const content = !attempt ? "" : attempt.scored ? "⚽" : "×";
+
+      return (
+        <span
+          key={`${side}-penalty-dot-${index}`}
+          className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-lg font-black ${
+            !attempt
+              ? "border-white/35 bg-transparent text-white/60"
+              : attempt.scored
+              ? "border-emerald-300 bg-emerald-300 text-emerald-950"
+              : "border-red-300 bg-red-400 text-red-950"
+          }`}
+        >
+          {content}
+        </span>
+      );
+    });
+  };
+
+  return (
+    <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/10 p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">
+            Disputa de pênaltis
+          </p>
+          <p className="mt-1 text-sm font-bold text-slate-300">
+            As cobranças aparecem uma a uma em tempo real.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white px-4 py-2 text-xl font-black text-slate-950">
+          {score.homeGoals} x {score.awayGoals}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4">
+        <div className="rounded-2xl bg-white/10 p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="truncate text-sm font-black text-white">{match.home}</p>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-300">{score.homeGoals}</p>
+          </div>
+          <div className="flex gap-2">{renderDots("home")}</div>
+        </div>
+
+        <div className="rounded-2xl bg-white/10 p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="truncate text-sm font-black text-white">{match.away}</p>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-300">{score.awayGoals}</p>
+          </div>
+          <div className="flex gap-2">{renderDots("away")}</div>
+        </div>
+      </div>
+
+      {latestAttempt ? (
+        <div
+          className={`mt-4 rounded-2xl border px-4 py-3 ${
+            latestAttempt.scored
+              ? "border-emerald-300 bg-emerald-300/15"
+              : "border-red-300 bg-red-400/15"
+          }`}
+        >
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">
+            Cobrança {latestAttempt.order + 1}
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {latestAttempt.taker}... {latestAttempt.title}
+          </p>
+          <p className="mt-1 text-xs font-bold text-slate-300">{latestAttempt.description}</p>
+        </div>
+      ) : (
+        <p className="mt-4 rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-slate-300">
+          Preparando os cobradores...
+        </p>
+      )}
+    </div>
+  );
+}
+
+function getLiveMatchScore(match, minute = 0) {
+  const revealedGoals = (match.events || []).filter(
+    (event) => event.type === "goal" && event.minute <= minute
+  );
+
+  return {
+    homeGoals: revealedGoals.filter((event) => event.side === "home").length,
+    awayGoals: revealedGoals.filter((event) => event.side === "away").length,
+  };
+}
+
+function getRecentLiveEvents(match, minute = 0, limit = 3) {
+  return (match.events || [])
+    .filter((event) => event.type === "goal" && event.minute <= minute)
+    .sort((a, b) => b.minute - a.minute)
+    .slice(0, limit);
+}
+
+function normalizeSoloMatchEvent(event, match) {
+  if (!event) return null;
+
+  const isHomeEvent = event.team === match.home;
+
+  return {
+    id: `${match.round}-${event.minute}-${event.scorer || event.team}`,
+    type: "goal",
+    icon: "⚽",
+    minute: event.minute,
+    side: isHomeEvent ? "home" : "away",
+    teamLabel: event.team,
+    title: `Gol de ${event.scorer || event.team}`,
+    description: event.assist
+      ? `${event.scorer || "O atacante"} completa jogada com assistência de ${event.assist}.`
+      : `${event.scorer || "O atacante"} aparece no momento certo e balança a rede.`,
+    playerName: event.scorer || null,
+    isUserGoal: event.isUserGoal || false,
+  };
+}
+
+function getSoloLiveMatchEvents(match) {
+  return (match?.events || [])
+    .map((event) => normalizeSoloMatchEvent(event, match))
+    .filter(Boolean)
+    .sort((a, b) => a.minute - b.minute);
+}
+
+function getSoloLiveMatchScore(match, minute = 0) {
+  const events = getSoloLiveMatchEvents(match).filter((event) => event.minute <= minute);
+
+  return {
+    homeGoals: events.filter((event) => event.side === "home").length,
+    awayGoals: events.filter((event) => event.side === "away").length,
+  };
+}
+
+function getRecentSoloLiveEvents(match, minute = 0, limit = 3) {
+  return getSoloLiveMatchEvents(match)
+    .filter((event) => event.minute <= minute)
+    .sort((a, b) => b.minute - a.minute)
+    .slice(0, limit);
+}
+
+function getLeaderboardTeamLabel(event, match) {
+  if (event.teamLabel) return event.teamLabel;
+  if (event.team) return event.team;
+  if (event.side === "home") return match?.homeTeam?.label || match?.home || "Mandante";
+  if (event.side === "away") return match?.awayTeam?.label || match?.away || "Visitante";
+  return "Time";
+}
+
+function buildLeaderboardsFromMatches(matches = []) {
+  const scorers = new Map();
+  const assistants = new Map();
+
+  matches.forEach((match) => {
+    (match.events || []).forEach((event) => {
+      if (event.type !== "goal") return;
+
+      const scorerName = event.playerName || event.scorer;
+      const teamLabel = getLeaderboardTeamLabel(event, match);
+
+      if (scorerName) {
+        const key = `${scorerName}__${teamLabel}`;
+        const current = scorers.get(key) || { name: scorerName, team: teamLabel, total: 0 };
+        current.total += 1;
+        scorers.set(key, current);
+      }
+
+      const assistName = event.assistName || event.assist;
+
+      if (assistName) {
+        const key = `${assistName}__${teamLabel}`;
+        const current = assistants.get(key) || { name: assistName, team: teamLabel, total: 0 };
+        current.total += 1;
+        assistants.set(key, current);
+      }
+    });
+  });
+
+  const sortLeaders = (items) =>
+    Array.from(items.values()).sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return a.name.localeCompare(b.name);
+    });
+
+  return {
+    scorers: sortLeaders(scorers),
+    assistants: sortLeaders(assistants),
+  };
+}
+
+function getLeagueLeaderboards({ rounds = [], revealedRounds = 0, liveRound = null, liveMinute = 0 }) {
+  const completedMatches = rounds
+    .slice(0, revealedRounds)
+    .flatMap((round) => round.matches || []);
+
+  const liveMatches = liveRound
+    ? (liveRound.matches || []).map((match) => ({
+        ...match,
+        events: (match.events || []).filter(
+          (event) => event.type === "goal" && event.minute <= liveMinute
+        ),
+      }))
+    : [];
+
+  return buildLeaderboardsFromMatches([...completedMatches, ...liveMatches]);
+}
+
+function LeaderboardPanel({ title, leaders, valueLabel = "gols", emptyMessage, limit = 10, compact = false }) {
+  const topLeaders = (leaders || []).slice(0, limit);
+
+  return (
+    <div className={`rounded-[2rem] border border-slate-900/10 bg-white/85 ${compact ? "p-4" : "p-5"} shadow-[0_16px_45px_rgba(15,23,42,0.08)]`}>
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+        {title}
+      </p>
+      <div className="mt-4 grid gap-2">
+        {topLeaders.length ? (
+          topLeaders.map((leader, index) => (
+            <div
+              key={`${title}-${leader.name}-${leader.team}-${index}`}
+              className={`highlight-outline-card grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl border border-emerald-400/55 bg-white text-slate-950 shadow-[0_10px_22px_rgba(16,185,129,0.10)] ${compact ? "px-2.5 py-2" : "px-3 py-2"}`}
+            >
+              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${index === 0 ? "bg-yellow-300 text-yellow-950" : "bg-white/90 text-slate-700"}`}>
+                {index + 1}
+              </span>
+              <div className="min-w-0">
+                <p className={`${compact ? "text-xs" : "text-sm"} truncate font-black text-slate-950`}>{leader.name}</p>
+                <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{leader.team}</p>
+              </div>
+              <span className="highlight-dark-pill leader-total-badge rounded-xl bg-slate-950 px-3 py-1 text-sm font-black text-white">
+                {leader.total}
+              </span>
+            </div>
+          ))
+        ) : (
+          <p className="force-dark-text rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
+            {emptyMessage || `Os líderes de ${valueLabel} aparecem depois dos primeiros lances.`}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function createOnlineDuelMatch(homeTeam, awayTeam, gameNumber, config = {}) {
+  const { homeGoals, awayGoals } = generateMatchScore(homeTeam, awayTeam);
+  const match = {
+    round: gameNumber,
+    gameNumber,
+    homeTeam,
+    awayTeam,
+    home: homeTeam.label,
+    away: awayTeam.label,
+    homeGoals,
+    awayGoals,
+    hasHumanTeam: true,
+    extraTimeGoals: null,
+    penalties: null,
+    winnerId: null,
+    winnerLabel: null,
+    decidedBy: "normal",
+  };
+
+  if (homeGoals > awayGoals) {
+    match.winnerId = homeTeam.id;
+    match.winnerLabel = homeTeam.label;
+  } else if (awayGoals > homeGoals) {
+    match.winnerId = awayTeam.id;
+    match.winnerLabel = awayTeam.label;
+  }
+
+  return {
+    ...match,
+    events: generateOnlineMatchEvents(match),
+  };
+}
+
+function getDuelMatchScoreLabel(match) {
+  if (!match) return "0 x 0";
+
+  let label = `${match.homeGoals} x ${match.awayGoals}`;
+
+  if (match.extraTimeGoals) {
+    label += ` · Prorr. ${match.extraTimeGoals.homeGoals} x ${match.extraTimeGoals.awayGoals}`;
+  }
+
+  if (match.penalties) {
+    label += ` · Pên. ${match.penalties.homeGoals} x ${match.penalties.awayGoals}`;
+  }
+
+  return label;
+}
+
+function getOnlineDuelSeriesSummary(result, untilIndex = null) {
+  if (!result?.matches?.length) {
+    return {
+      homeWins: 0,
+      awayWins: 0,
+      draws: 0,
+      homeAggregate: 0,
+      awayAggregate: 0,
+      winnerId: null,
+      winnerLabel: null,
+      isComplete: false,
+    };
+  }
+
+  const matches = result.matches.slice(0, untilIndex === null ? result.matches.length : untilIndex + 1);
+  const homeTeam = result.teams[0];
+  const awayTeam = result.teams[1];
+  let homeWins = 0;
+  let awayWins = 0;
+  let draws = 0;
+  let homeAggregate = 0;
+  let awayAggregate = 0;
+
+  matches.forEach((match) => {
+    const homeIsFirstTeam = match.homeTeam.id === homeTeam.id;
+    const firstTeamGoals = homeIsFirstTeam ? match.homeGoals : match.awayGoals;
+    const secondTeamGoals = homeIsFirstTeam ? match.awayGoals : match.homeGoals;
+    const firstTeamExtraGoals = homeIsFirstTeam
+      ? match.extraTimeGoals?.homeGoals || 0
+      : match.extraTimeGoals?.awayGoals || 0;
+    const secondTeamExtraGoals = homeIsFirstTeam
+      ? match.extraTimeGoals?.awayGoals || 0
+      : match.extraTimeGoals?.homeGoals || 0;
+
+    homeAggregate += firstTeamGoals + firstTeamExtraGoals;
+    awayAggregate += secondTeamGoals + secondTeamExtraGoals;
+
+    if (match.winnerId === homeTeam.id) homeWins += 1;
+    else if (match.winnerId === awayTeam.id) awayWins += 1;
+    else draws += 1;
+  });
+
+  let winnerId = null;
+  let winnerLabel = null;
+  const winsNeeded = getOnlineDuelWinsNeeded(result.format);
+
+  if (winsNeeded && homeWins >= winsNeeded) {
+    winnerId = homeTeam.id;
+    winnerLabel = homeTeam.label;
+  } else if (winsNeeded && awayWins >= winsNeeded) {
+    winnerId = awayTeam.id;
+    winnerLabel = awayTeam.label;
+  } else if (!winsNeeded && result.format === "single" && matches.length >= 1) {
+    const match = matches[0];
+    winnerId = match.winnerId;
+    winnerLabel = match.winnerLabel;
+  } else if (!winsNeeded && result.format === "twoLegs" && matches.length >= 2) {
+    if (homeAggregate > awayAggregate) {
+      winnerId = homeTeam.id;
+      winnerLabel = homeTeam.label;
+    } else if (awayAggregate > homeAggregate) {
+      winnerId = awayTeam.id;
+      winnerLabel = awayTeam.label;
+    } else {
+      const lastMatch = matches[matches.length - 1];
+      if (lastMatch?.winnerId) {
+        winnerId = lastMatch.winnerId;
+        winnerLabel = lastMatch.winnerLabel;
+      }
+    }
+  }
+
+  if (!winnerId && matches.length === result.matches.length) {
+    if (homeWins > awayWins) {
+      winnerId = homeTeam.id;
+      winnerLabel = homeTeam.label;
+    } else if (awayWins > homeWins) {
+      winnerId = awayTeam.id;
+      winnerLabel = awayTeam.label;
+    } else if (homeAggregate > awayAggregate) {
+      winnerId = homeTeam.id;
+      winnerLabel = homeTeam.label;
+    } else if (awayAggregate > homeAggregate) {
+      winnerId = awayTeam.id;
+      winnerLabel = awayTeam.label;
+    }
+  }
+
+  return {
+    homeWins,
+    awayWins,
+    draws,
+    homeAggregate,
+    awayAggregate,
+    winnerId,
+    winnerLabel,
+    isComplete: Boolean(winnerId || matches.length >= result.matches.length),
+  };
+}
+
+
+
+function getOnlineDuelLiveSeriesSummary(result, currentIndex = 0, currentScore = null, currentMinute = 0, currentFinished = false) {
+  if (!result?.matches?.length) {
+    return {
+      homeWins: 0,
+      awayWins: 0,
+      draws: 0,
+      homeAggregate: 0,
+      awayAggregate: 0,
+      winnerId: null,
+      winnerLabel: null,
+      isComplete: false,
+    };
+  }
+
+  const homeTeam = result.teams[0];
+  const awayTeam = result.teams[1];
+  const matchesToReveal = result.matches.slice(0, Math.max(0, currentIndex));
+  let homeWins = 0;
+  let awayWins = 0;
+  let draws = 0;
+  let homeAggregate = 0;
+  let awayAggregate = 0;
+
+  matchesToReveal.forEach((match) => {
+    const homeIsFirstTeam = match.homeTeam.id === homeTeam.id;
+    const firstTeamGoals = homeIsFirstTeam ? match.homeGoals : match.awayGoals;
+    const secondTeamGoals = homeIsFirstTeam ? match.awayGoals : match.homeGoals;
+    const firstTeamExtraGoals = homeIsFirstTeam
+      ? match.extraTimeGoals?.homeGoals || 0
+      : match.extraTimeGoals?.awayGoals || 0;
+    const secondTeamExtraGoals = homeIsFirstTeam
+      ? match.extraTimeGoals?.awayGoals || 0
+      : match.extraTimeGoals?.homeGoals || 0;
+
+    homeAggregate += firstTeamGoals + firstTeamExtraGoals;
+    awayAggregate += secondTeamGoals + secondTeamExtraGoals;
+
+    if (match.winnerId === homeTeam.id) homeWins += 1;
+    else if (match.winnerId === awayTeam.id) awayWins += 1;
+    else draws += 1;
+  });
+
+  const currentMatch = result.matches[currentIndex];
+
+  if (currentMatch && currentScore) {
+    const homeIsFirstTeam = currentMatch.homeTeam.id === homeTeam.id;
+    const firstTeamLiveGoals = homeIsFirstTeam ? currentScore.homeGoals : currentScore.awayGoals;
+    const secondTeamLiveGoals = homeIsFirstTeam ? currentScore.awayGoals : currentScore.homeGoals;
+
+    homeAggregate += firstTeamLiveGoals;
+    awayAggregate += secondTeamLiveGoals;
+
+    if (currentFinished) {
+      if (currentMatch.winnerId === homeTeam.id) homeWins += 1;
+      else if (currentMatch.winnerId === awayTeam.id) awayWins += 1;
+      else draws += 1;
+    }
+  }
+
+  let winnerId = null;
+  let winnerLabel = null;
+  const winsNeeded = getOnlineDuelWinsNeeded(result.format);
+
+  if (currentFinished) {
+    if (winsNeeded && homeWins >= winsNeeded) {
+      winnerId = homeTeam.id;
+      winnerLabel = homeTeam.label;
+    } else if (winsNeeded && awayWins >= winsNeeded) {
+      winnerId = awayTeam.id;
+      winnerLabel = awayTeam.label;
+    } else if (!winsNeeded && result.format === "single" && currentIndex >= 0) {
+      const match = result.matches[0];
+      if (match && currentIndex === 0 && currentFinished) {
+        winnerId = match.winnerId;
+        winnerLabel = match.winnerLabel;
+      }
+    } else if (!winsNeeded && result.format === "twoLegs" && currentIndex >= 1) {
+      const lastMatch = result.matches[1];
+
+      if (homeAggregate > awayAggregate) {
+        winnerId = homeTeam.id;
+        winnerLabel = homeTeam.label;
+      } else if (awayAggregate > homeAggregate) {
+        winnerId = awayTeam.id;
+        winnerLabel = awayTeam.label;
+      } else if (lastMatch?.winnerId && currentFinished) {
+        winnerId = lastMatch.winnerId;
+        winnerLabel = lastMatch.winnerLabel;
+      }
+    }
+  }
+
+  return {
+    homeWins,
+    awayWins,
+    draws,
+    homeAggregate,
+    awayAggregate,
+    winnerId,
+    winnerLabel,
+    isComplete: Boolean(winnerId && currentFinished),
+  };
+}
+
+
+function duelFormatRequiresPenalties(format) {
+  return ["bestOf3", "bestOf5"].includes(format);
+}
+
+function duelFormatAllowsExtraTime(format) {
+  return format === "twoLegs";
+}
+
+function shouldResolveMatchDrawWithPenalties(format, config = {}) {
+  return duelFormatRequiresPenalties(format) || Boolean(config.duelPenalties);
+}
+
+function applyPenaltyShootoutToDuelMatch(match, decidedBy = "pênaltis") {
+  const shootout = generatePenaltyShootout(match.homeTeam, match.awayTeam);
+
+  return {
+    ...match,
+    penalties: shootout,
+    winnerId: shootout.homeGoals > shootout.awayGoals ? match.homeTeam.id : match.awayTeam.id,
+    winnerLabel: shootout.homeGoals > shootout.awayGoals ? match.homeTeam.label : match.awayTeam.label,
+    decidedBy,
+  };
+}
+
+function getDuelConfigWithRules(config = {}) {
+  const format = config.duelFormat || "single";
+  const extraTimeAllowed = duelFormatAllowsExtraTime(format);
+  const extraTime = extraTimeAllowed && Boolean(config.duelExtraTime);
+  const penalties = extraTime || duelFormatRequiresPenalties(format) || Boolean(config.duelPenalties);
+
+  return {
+    ...config,
+    duelFormat: format,
+    duelExtraTime: extraTime,
+    duelPenalties: penalties,
+  };
+}
+
+
+function simulateOnlineDuel(room, draftOrder, lineupsMap) {
+  const participants = draftOrder.slice(0, 2);
+  const teams = participants.map((participant) =>
+    createOnlineSimulationTeam(participant, lineupsMap[participant.id] || [])
+  );
+
+  if (teams.length < 2) return null;
+
+  const homeTeam = teams[0];
+  const awayTeam = teams[1];
+  const rawConfig = room?.config || {};
+  const config = getDuelConfigWithRules(rawConfig);
+  const format = config.duelFormat || "single";
+  const maxGames = getOnlineDuelMaxGames(format);
+  const matches = [];
+
+  for (let gameIndex = 0; gameIndex < maxGames; gameIndex += 1) {
+    const invertHome = gameIndex % 2 === 1;
+    const gameHomeTeam = invertHome ? awayTeam : homeTeam;
+    const gameAwayTeam = invertHome ? homeTeam : awayTeam;
+    let match = createOnlineDuelMatch(gameHomeTeam, gameAwayTeam, gameIndex + 1, config);
+
+    const winsNeeded = getOnlineDuelWinsNeeded(format);
+
+    if (winsNeeded && !match.winnerId && shouldResolveMatchDrawWithPenalties(format, config)) {
+      match = applyPenaltyShootoutToDuelMatch(match);
+    }
+
+    if (format === "single" && !match.winnerId && shouldResolveMatchDrawWithPenalties(format, config)) {
+      match = applyPenaltyShootoutToDuelMatch(match);
+    }
+
+    matches.push(match);
+
+    if (winsNeeded) {
+      const partialSummary = getOnlineDuelSeriesSummary({ format, teams, matches });
+      if (partialSummary.winnerId) break;
+    }
+  }
+
+  if (format === "twoLegs" && matches.length >= 2) {
+    const firstLeg = matches[0];
+    const secondLeg = matches[1];
+    const firstTeamAggregate = firstLeg.homeGoals + secondLeg.awayGoals;
+    const secondTeamAggregate = firstLeg.awayGoals + secondLeg.homeGoals;
+
+    if (firstTeamAggregate === secondTeamAggregate) {
+      let updatedSecondLeg = secondLeg;
+
+      if (config.duelExtraTime) {
+        let homeExtra = Math.random() < 0.32 ? 1 : 0;
+        let awayExtra = Math.random() < 0.32 ? 1 : 0;
+        updatedSecondLeg = addExtraTimeToDuelMatch(secondLeg, homeExtra, awayExtra);
+
+        const firstTeamExtra = awayExtra;
+        const secondTeamExtra = homeExtra;
+        const firstAfterExtra = firstTeamAggregate + firstTeamExtra;
+        const secondAfterExtra = secondTeamAggregate + secondTeamExtra;
+
+        if (firstAfterExtra > secondAfterExtra) {
+          updatedSecondLeg.winnerId = homeTeam.id;
+          updatedSecondLeg.winnerLabel = homeTeam.label;
+          updatedSecondLeg.decidedBy = "prorrogação";
+        } else if (secondAfterExtra > firstAfterExtra) {
+          updatedSecondLeg.winnerId = awayTeam.id;
+          updatedSecondLeg.winnerLabel = awayTeam.label;
+          updatedSecondLeg.decidedBy = "prorrogação";
+        } else if (config.duelPenalties) {
+          updatedSecondLeg = applyPenaltyShootoutToDuelMatch(updatedSecondLeg);
+        }
+      } else if (config.duelPenalties) {
+        updatedSecondLeg = applyPenaltyShootoutToDuelMatch(updatedSecondLeg);
+      }
+
+      matches[1] = updatedSecondLeg;
+    }
+  }
+
+  const result = {
+    room,
+    teams,
+    format,
+    formatLabel: getOnlineDuelFormatLabel(format),
+    hasExtraTime: Boolean(config.duelExtraTime),
+    hasPenalties: Boolean(config.duelPenalties),
+    matches,
+    match: matches[0],
+  };
+
+  return {
+    ...result,
+    summary: getOnlineDuelSeriesSummary(result),
+  };
+}
+
+
+function getMainHumanLiveMatch(round, participantId = null) {
+  if (!round?.matches?.length) return null;
+
+  if (participantId) {
+    const participantMatch = round.matches.find(
+      (match) =>
+        match.homeTeam?.ownerParticipantId === participantId ||
+        match.awayTeam?.ownerParticipantId === participantId
+    );
+
+    if (participantMatch) return participantMatch;
+  }
+
+  return round.matches.find((match) => match.hasHumanTeam) || round.matches[0];
+}
+
+function getLiveOnlineLeagueTable(onlineLeagueResult, revealedRounds, onlineLiveRound) {
+  if (!onlineLiveRound) return getPartialOnlineLeagueTable(onlineLeagueResult, revealedRounds);
+
+  const standingsMap = createStandingsFromTeams(onlineLeagueResult.leagueTeams || []);
+  const completedRounds = onlineLeagueResult.rounds.slice(0, revealedRounds);
+
+  completedRounds.forEach((round) => {
+    round.matches.forEach((match) => {
+      applyMatchToStandings(
+        standingsMap,
+        match.homeTeam,
+        match.awayTeam,
+        match.homeGoals,
+        match.awayGoals
+      );
+    });
+  });
+
+  onlineLiveRound.round.matches.forEach((match) => {
+    const { homeGoals, awayGoals } = getLiveMatchScore(match, onlineLiveRound.minute);
+
+    applyMatchToStandings(standingsMap, match.homeTeam, match.awayTeam, homeGoals, awayGoals);
+  });
+
+  return getSortedTableFromStandingsMap(standingsMap);
+}
+
+
 function App() {
   const [theme, setTheme] = useState("light");
   const themeClass = theme === "dark" ? "theme-dark" : "theme-light";
@@ -2035,6 +4260,183 @@ function App() {
   const [shareMessage, setShareMessage] = useState("");
   const [copiedPixKey, setCopiedPixKey] = useState(false);
   const [pixCopyMessage, setPixCopyMessage] = useState("");
+  const [joinRoomCode, setJoinRoomCode] = useState("");
+  const [joinRoomFeedback, setJoinRoomFeedback] = useState("");
+  const [matchmakingSetup, setMatchmakingSetup] = useState({
+    onlineMode: "duel",
+    difficulty: "normal",
+  });
+
+  const [onlineSetup, setOnlineSetup] = useState({
+    ...ONLINE_DEFAULT_CONFIG,
+    formationId: formations[0]?.id || "",
+  });
+  const [onlineRoom, setOnlineRoom] = useState(null);
+  const [onlineDraftOrder, setOnlineDraftOrder] = useState([]);
+  const [isDrawingOnlineOrder, setIsDrawingOnlineOrder] = useState(false);
+  const [rollingOnlineParticipant, setRollingOnlineParticipant] = useState("");
+  const [onlineDraftState, setOnlineDraftState] = useState(null);
+  const [onlinePendingSelection, setOnlinePendingSelection] = useState(null);
+  const [onlinePickCountdown, setOnlinePickCountdown] = useState(null);
+  const [onlineLeagueResult, setOnlineLeagueResult] = useState(null);
+  const [onlineRevealedRounds, setOnlineRevealedRounds] = useState(0);
+  const [onlineLiveRound, setOnlineLiveRound] = useState(null);
+  const [onlineLiveSpeed, setOnlineLiveSpeed] = useState("normal");
+  const [soloLiveMatch, setSoloLiveMatch] = useState(null);
+  const [onlineDuelResult, setOnlineDuelResult] = useState(null);
+  const [onlineDuelLive, setOnlineDuelLive] = useState(null);
+  const [dismissedOnlineChampionModal, setDismissedOnlineChampionModal] = useState(false);
+  const [isStartingOnlineLeague, setIsStartingOnlineLeague] = useState(false);
+  const [localParticipantId, setLocalParticipantId] = useState("");
+  const [isCreatingOnlineRoom, setIsCreatingOnlineRoom] = useState(false);
+  const [isJoiningOnlineRoom, setIsJoiningOnlineRoom] = useState(false);
+  const [savedRoomCode, setSavedRoomCode] = useState(() => getRememberedRoomCode());
+  const [isResumingOnlineRoom, setIsResumingOnlineRoom] = useState(false);
+  const [resumeRoomFeedback, setResumeRoomFeedback] = useState("");
+  const [lobbyRooms, setLobbyRooms] = useState([]);
+  const [isLoadingLobbyRooms, setIsLoadingLobbyRooms] = useState(false);
+  const [lobbyRoomsFeedback, setLobbyRoomsFeedback] = useState("");
+  const [joiningLobbyRoomCode, setJoiningLobbyRoomCode] = useState("");
+  const onlineRoomRef = useRef(null);
+  const onlineApiRef = useRef(null);
+  const localParticipantIdRef = useRef("");
+  const myParticipantIdRef = useRef(""); // the exact participant id we used when we successfully joined/created this room
+  const hasSeenSelfInRoomRef = useRef(false); // only eject on remote data if we previously saw ourselves in a server-provided room state
+  const liveSpeedRef = useRef("normal");
+  const [isOnlineApiLoading, setIsOnlineApiLoading] = useState(false);
+  const [isOnlineApiReady, setIsOnlineApiReady] = useState(false);
+  const [onlineApiError, setOnlineApiError] = useState("");
+  const [justBecameHost, setJustBecameHost] = useState(false); // feedback leve quando vira host por promoção automática
+
+  async function ensureOnlineApi() {
+    if (onlineApiRef.current && isOnlineApiReady) {
+      const uid = await onlineApiRef.current.ensureAnonymousAuth();
+      // Always keep the local id in sync with the live auth UID.
+      // The "my id" for ejection protection is the one we used to join (myParticipantIdRef),
+      // but for actual Firestore writes the live UID must match what is stored as hostId/participant id.
+      localParticipantIdRef.current = uid;
+      setLocalParticipantId(uid);
+      return onlineApiRef.current;
+    }
+
+    setIsOnlineApiLoading(true);
+    setOnlineApiError("");
+
+    try {
+      const api = await loadOnlineRoom();
+      const uid = await api.ensureAnonymousAuth();
+      onlineApiRef.current = api;
+      localParticipantIdRef.current = uid;
+      setLocalParticipantId(uid);
+      setIsOnlineApiReady(true);
+      return api;
+    } catch (error) {
+      console.error(error);
+      onlineApiRef.current = null;
+      setIsOnlineApiReady(false);
+      setOnlineApiError(error?.message || "Não foi possível carregar o modo online.");
+      throw error;
+    } finally {
+      setIsOnlineApiLoading(false);
+    }
+  }
+
+  async function withRetry(fn, maxRetries = 3, baseDelay = 150) {
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        const code = error?.code || '';
+        if (attempt < maxRetries - 1 && (code === 'failed-precondition' || code === 'aborted' || code === 'unavailable')) {
+          await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
+  }
+
+  async function enterOnlineScreen(targetScreen) {
+    setOnlineApiError("");
+    setScreen(targetScreen);
+
+    try {
+      await ensureOnlineApi();
+    } catch (error) {
+      setScreen("home");
+      throw error;
+    }
+  }
+
+  function handleEnterOnlineClick(targetScreen = "online-home") {
+    if (isOnlineApiLoading) return;
+
+    enterOnlineScreen(targetScreen).catch((error) => {
+      console.error(error);
+    });
+  }
+
+  async function fetchRoomByCode(code) {
+    return (await ensureOnlineApi()).fetchRoomByCode(code);
+  }
+
+  async function createRoomDocument(room) {
+    return (await ensureOnlineApi()).createRoomDocument(room);
+  }
+
+  async function joinRoomDocument(code, participant) {
+    return (await ensureOnlineApi()).joinRoomDocument(code, participant);
+  }
+
+  async function leaveRoomDocument(code, participantId) {
+    return (await ensureOnlineApi()).leaveRoomDocument(code, participantId);
+  }
+
+  async function patchRoomDocument(code, updates) {
+    return (await ensureOnlineApi()).patchRoomDocument(code, updates);
+  }
+
+  async function saveOnlineLeagueResult(code, leagueResult) {
+    return (await ensureOnlineApi()).saveOnlineLeagueResult(code, leagueResult);
+  }
+
+  async function clearOnlineLeagueResult(code) {
+    return (await ensureOnlineApi()).clearOnlineLeagueResult(code);
+  }
+
+  async function listLobbyRooms(filters = {}) {
+    return (await ensureOnlineApi()).listLobbyRooms(filters);
+  }
+
+  async function cleanupOldRooms(maxAgeMs) {
+    return (await ensureOnlineApi()).cleanupOldRooms(maxAgeMs);
+  }
+
+  async function touchParticipantPresence(code, participantId) {
+    return (await ensureOnlineApi()).touchParticipantPresence(code, participantId);
+  }
+
+  async function pruneStaleParticipants(code) {
+    return (await ensureOnlineApi()).pruneStaleParticipants(code);
+  }
+
+  const isOnlineHost = useMemo(() => {
+    if (!onlineRoom || !localParticipantId) return false;
+
+    return (
+      onlineRoom.hostId === localParticipantId ||
+      Boolean(onlineRoom.participants?.find((participant) => participant.id === localParticipantId)?.isHost)
+    );
+  }, [onlineRoom, localParticipantId]);
+
+  const localOnlineParticipant = useMemo(() => {
+    if (!onlineRoom?.participants?.length || !localParticipantId) return null;
+
+    return onlineRoom.participants.find((participant) => participant.id === localParticipantId) || null;
+  }, [onlineRoom, localParticipantId]);
 
   const databaseStats = useMemo(() => {
     const teamsWithPlayers = getTeamsWithPlayers();
@@ -2049,6 +4451,274 @@ function App() {
       ),
     };
   }, []);
+
+  function applyRemoteRoomState(room, isRemote = false) {
+    if (!room) return;
+
+    const activeParticipantId = myParticipantIdRef.current || localParticipantIdRef.current || localParticipantId;
+
+    if (activeParticipantId && room.participants?.length) {
+      const stillInRoom = room.participants.some((participant) => participant.id === activeParticipantId);
+
+      if (stillInRoom) {
+        if (isRemote) {
+          hasSeenSelfInRoomRef.current = true;
+        }
+      } else if (hasSeenSelfInRoomRef.current && isRemote) {
+        // We were previously present according to server data, but this remote update no longer lists us.
+        // Real removal (pruned for inactivity, host removed, room changed, etc.).
+        resetOnlineSessionState();
+        setScreen("online-home");
+        setLobbyRoomsFeedback("Você saiu da sala ou foi removido por inatividade.");
+        return;
+      } else if (!stillInRoom && isRemote && !hasSeenSelfInRoomRef.current) {
+        // Remote state arrived without us, but we haven't confirmed presence via a previous remote state yet.
+        // This can happen right after join if the listener sees a pre-write snapshot.
+        // Keep our optimistic state; do not apply a state that would eject us.
+        return;
+      }
+      // If !isRemote (optimistic after join/create), we trust the synthetic list we just built.
+    }
+
+    onlineRoomRef.current = room;
+    setOnlineRoom(room);
+    setOnlineDraftOrder(room.draftOrder || []);
+    setIsDrawingOnlineOrder(Boolean(room.isDrawingOrder));
+    setRollingOnlineParticipant(room.rollingParticipant || "");
+    setOnlineDraftState(room.draftState || null);
+    setOnlineLeagueResult(hydrateLeagueResultFromFirestore(room.leagueResult));
+    setOnlineDuelResult(room.duelResult || null);
+    setOnlineRevealedRounds(room.revealedRounds || 0);
+    setOnlineLiveRound(buildOnlineLiveRoundFromRoom(room));
+    setOnlineDuelLive(buildOnlineDuelLiveFromRoom(room));
+
+    const hydratedLeagueResult = hydrateLeagueResultFromFirestore(room.leagueResult);
+    const totalLeagueRounds = hydratedLeagueResult?.rounds?.length || 0;
+
+    if (
+      room.status === "league" &&
+      totalLeagueRounds > 0 &&
+      (room.revealedRounds || 0) >= totalLeagueRounds
+    ) {
+      clearActiveRoomCode();
+      setSavedRoomCode("");
+    }
+
+    if (room.liveSpeed && !isOnlineHost) {
+      liveSpeedRef.current = room.liveSpeed;
+      setOnlineLiveSpeed(room.liveSpeed);
+    }
+
+    // Quando recebemos atualização remota e o usuário local virou (ou continua sendo) o host,
+    // fazemos prune imediato + sync de liveSpeed. Isso garante que se o host anterior caiu,
+    // o novo host assume o controle de presença e velocidade sem esperar o próximo intervalo.
+    if (isRemote) {
+      const localId = localParticipantIdRef.current || localParticipantId;
+      const amHostNow = room.hostId === localId ||
+        Boolean(room.participants?.find((p) => p.id === localId)?.isHost);
+
+      if (amHostNow) {
+        pruneStaleParticipants(room.code).catch(console.error);
+        if (room.liveSpeed) {
+          syncHostLiveSpeedFromRoom(room);
+        }
+      }
+    }
+  }
+
+
+
+  function syncHostLiveSpeedFromRoom(room) {
+    if (!room?.liveSpeed) return;
+
+    liveSpeedRef.current = room.liveSpeed;
+    setOnlineLiveSpeed(room.liveSpeed);
+  }
+
+  function syncOnlineScreenWithRoom(room) {
+    if (!room?.status) return;
+
+    setScreen((currentScreen) =>
+      shouldStayOnOnlineSetupScreen(currentScreen)
+        ? currentScreen
+        : getOnlineScreenForRoom(room)
+    );
+  }
+
+  async function resumeSavedOnlineRoom() {
+    const rememberedCode = savedRoomCode || getRememberedRoomCode();
+    if (!rememberedCode || onlineRoom) return;
+
+    setIsResumingOnlineRoom(true);
+    setResumeRoomFeedback("");
+
+    try {
+      await ensureOnlineApi();
+      const room = await fetchRoomByCode(rememberedCode);
+
+      if (!room) {
+        clearActiveRoomCode();
+        setSavedRoomCode("");
+        setResumeRoomFeedback("Sala não encontrada. O código salvo foi removido.");
+        return;
+      }
+
+      const playerId = localParticipantIdRef.current || localParticipantId;
+      const isParticipant = room.participants?.some((participant) => participant.id === playerId);
+
+      if (!isParticipant) {
+        clearActiveRoomCode();
+        setSavedRoomCode("");
+        setResumeRoomFeedback("Você não participa mais dessa sala.");
+        return;
+      }
+
+      myParticipantIdRef.current = playerId;
+      localParticipantIdRef.current = playerId;
+      setLocalParticipantId(playerId);
+      applyRemoteRoomState(room, true);
+      if (room.hostId === playerId || room.participants?.some((entry) => entry.id === playerId && entry.isHost)) {
+        syncHostLiveSpeedFromRoom(room);
+      }
+      syncOnlineScreenWithRoom(room);
+    } catch (error) {
+      console.error(error);
+      setResumeRoomFeedback("Não foi possível retomar a sala agora.");
+    } finally {
+      setIsResumingOnlineRoom(false);
+    }
+  }
+
+  function dismissSavedOnlineRoom() {
+    clearActiveRoomCode();
+    setSavedRoomCode("");
+    setResumeRoomFeedback("");
+  }
+
+  useEffect(() => {
+    if (!screen.startsWith("online-") || isOnlineApiReady || isOnlineApiLoading) {
+      return undefined;
+    }
+
+    ensureOnlineApi().catch(console.error);
+    return undefined;
+  }, [screen, isOnlineApiReady, isOnlineApiLoading]);
+
+  useEffect(() => {
+    if (!onlineRoom?.code || !isOnlineApiReady || !onlineApiRef.current) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let unsubscribe = () => {};
+
+    unsubscribe = onlineApiRef.current.subscribeToRoom(
+      onlineRoom.code,
+      (remoteRoom) => {
+        if (cancelled) return;
+
+        if (!remoteRoom) {
+          clearActiveRoomCode();
+          setSavedRoomCode("");
+          setOnlineRoom(null);
+          setScreen("online-home");
+          return;
+        }
+
+        applyRemoteRoomState(remoteRoom, true);
+        syncOnlineScreenWithRoom(remoteRoom);
+      },
+      (error) => {
+        console.error(error);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [onlineRoom?.code, isOnlineApiReady]);
+
+  useEffect(() => {
+    // Always heartbeat with the id we used to join this specific room (stable across ensure calls).
+    const heartbeatParticipantId = myParticipantIdRef.current || localParticipantIdRef.current || localParticipantId;
+    if (!onlineRoom?.code || !heartbeatParticipantId) return undefined;
+
+    const sendHeartbeat = async () => {
+      try {
+        await touchParticipantPresence(onlineRoom.code, heartbeatParticipantId);
+      } catch (error) {
+        const code = error?.code || '';
+        if (code === 'failed-precondition' || code === 'aborted' || code === 'unavailable') {
+          // transient contention from concurrent writes (normal in realtime), will retry on next interval
+          return;
+        }
+        console.error(error);
+      }
+    };
+
+    sendHeartbeat();
+    const heartbeatId = window.setInterval(sendHeartbeat, 30000); // heartbeat mais agressivo pra presença mais rápida no lobby
+
+    return () => window.clearInterval(heartbeatId);
+  }, [onlineRoom?.code, localParticipantId]);
+
+  useEffect(() => {
+    if (!isOnlineHost || !onlineRoom?.code) return undefined;
+
+    const pruneId = window.setInterval(() => {
+      pruneStaleParticipants(onlineRoom.code).catch((error) => {
+        const code = error?.code || '';
+        if (code === 'failed-precondition' || code === 'aborted' || code === 'unavailable') {
+          return;
+        }
+        console.error(error);
+      });
+    }, 30000); // prune mais frequente também
+
+    return () => window.clearInterval(pruneId);
+  }, [isOnlineHost, onlineRoom?.code]);
+
+  useEffect(() => {
+    if (!onlineRoom?.code || !localParticipantId) return undefined;
+
+    const handlePageHide = () => {
+      const roomCode = onlineRoomRef.current?.code;
+      const participantId = myParticipantIdRef.current || localParticipantIdRef.current;
+
+      if (!roomCode || !participantId) return;
+
+      leaveRoomDocument(roomCode, participantId).catch(console.error);
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [onlineRoom?.code, localParticipantId]);
+
+  // Feedback leve quando o usuário vira host automaticamente (promoção por queda do anterior)
+  useEffect(() => {
+    if (isOnlineHost && onlineRoom?.hostId) {
+      const timer = setTimeout(() => {
+        setJustBecameHost(true);
+        setTimeout(() => setJustBecameHost(false), 3800);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isOnlineHost, onlineRoom?.hostId]);
+
+  useEffect(() => {
+    if (screen !== "online-matchmaking" || !isOnlineApiReady) return undefined;
+
+    refreshLobbyRooms().catch(console.error);
+
+    // Auto-refresh da lista de salas enquanto o usuário estiver na tela de matchmaking
+    const intervalId = window.setInterval(() => {
+      refreshLobbyRooms().catch(console.error);
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [screen, isOnlineApiReady, matchmakingSetup.onlineMode, matchmakingSetup.difficulty]);
 
   const homeStatsCards = [
     {
@@ -2070,6 +4740,241 @@ function App() {
       icon: Shirt,
     },
   ];
+
+
+  useEffect(() => {
+    if (!onlineRoom?.liveRound?.roundStartedAt || onlineRoom.status !== "league") {
+      return undefined;
+    }
+
+    const roundStartedAt = onlineRoom.liveRound.roundStartedAt;
+    const roundNumber = onlineRoom.liveRound.roundNumber;
+
+    const tick = () => {
+      const minute = getLiveMinuteFromStartedAt(roundStartedAt, liveSpeedRef.current);
+
+      setOnlineLiveRound((current) => {
+        if (!current || current.round?.round !== roundNumber) return current;
+        if (current.minute === minute) return current;
+
+        return { ...current, minute };
+      });
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 40);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    onlineRoom?.liveRound?.roundStartedAt,
+    onlineRoom?.liveRound?.roundNumber,
+    onlineRoom?.status,
+    onlineLiveSpeed,
+    onlineRoom?.liveSpeed,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isOnlineHost ||
+      !onlineRoom?.code ||
+      onlineRoom.status !== "league" ||
+      !onlineRoom.liveRound?.roundStartedAt
+    ) {
+      return undefined;
+    }
+
+    const roundNumber = onlineRoom.liveRound.roundNumber;
+    let ended = false;
+
+    const checkEnd = async () => {
+      if (ended) return;
+
+      const room = onlineRoomRef.current;
+      if (!room?.liveRound || room.liveRound.roundNumber !== roundNumber) return;
+
+      const minute = getLiveMinuteFromStartedAt(
+        room.liveRound.roundStartedAt,
+        liveSpeedRef.current
+      );
+
+      if (minute < 90) return;
+
+      ended = true;
+
+      try {
+        await patchRoomDocument(room.code, {
+          liveRound: null,
+          revealedRounds: roundNumber,
+        });
+      } catch (error) {
+        console.error(error);
+        ended = false;
+      }
+    };
+
+    const intervalId = window.setInterval(checkEnd, 120);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    isOnlineHost,
+    onlineRoom?.code,
+    onlineRoom?.status,
+    onlineRoom?.liveRound?.roundNumber,
+    onlineRoom?.liveRound?.roundStartedAt,
+    onlineLiveSpeed,
+    onlineRoom?.liveSpeed,
+  ]);
+
+  useEffect(() => {
+    if (
+      !onlineRoom?.duelLive?.roundStartedAt ||
+      onlineRoom.status !== "duel" ||
+      onlineRoom.duelLive.isFinished
+    ) {
+      return undefined;
+    }
+
+    const roundStartedAt = onlineRoom.duelLive.roundStartedAt;
+    const matchIndex = onlineRoom.duelLive.matchIndex;
+
+    const tick = () => {
+      const room = onlineRoomRef.current;
+      const match = room?.duelResult?.matches?.[matchIndex];
+      if (!match) return;
+
+      const endMinute = getDuelLiveEndMinute(match);
+      const minute = getLiveMinuteFromStartedAt(roundStartedAt, liveSpeedRef.current, endMinute);
+
+      setOnlineDuelLive((current) => {
+        if (!current || current.matchIndex !== matchIndex) return current;
+        if (current.minute === minute && current.isFinished === room.duelLive.isFinished) return current;
+
+        return {
+          ...current,
+          minute,
+          isFinished: Boolean(room.duelLive.isFinished),
+        };
+      });
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 40);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    onlineRoom?.duelLive?.roundStartedAt,
+    onlineRoom?.duelLive?.matchIndex,
+    onlineRoom?.duelLive?.isFinished,
+    onlineRoom?.status,
+    onlineLiveSpeed,
+    onlineRoom?.liveSpeed,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isOnlineHost ||
+      !onlineRoom?.code ||
+      onlineRoom.status !== "duel" ||
+      !onlineRoom.duelLive?.roundStartedAt ||
+      onlineRoom.duelLive.isFinished
+    ) {
+      return undefined;
+    }
+
+    const matchIndex = onlineRoom.duelLive.matchIndex;
+    let ended = false;
+
+    const checkEnd = async () => {
+      if (ended) return;
+
+      const room = onlineRoomRef.current;
+      if (!room?.duelLive || room.duelLive.matchIndex !== matchIndex || room.duelLive.isFinished) {
+        return;
+      }
+
+      const match = room.duelResult?.matches?.[matchIndex];
+      if (!match) return;
+
+      const endMinute = getDuelLiveEndMinute(match);
+      const minute = getLiveMinuteFromStartedAt(
+        room.duelLive.roundStartedAt,
+        liveSpeedRef.current,
+        endMinute
+      );
+
+      if (minute < endMinute) return;
+
+      ended = true;
+
+      try {
+        await patchRoomDocument(room.code, {
+          duelLive: {
+            matchIndex,
+            minute: endMinute,
+            isFinished: true,
+            roundStartedAt: null,
+          },
+        });
+      } catch (error) {
+        console.error(error);
+        ended = false;
+      }
+    };
+
+    const intervalId = window.setInterval(checkEnd, 120);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    isOnlineHost,
+    onlineRoom?.code,
+    onlineRoom?.status,
+    onlineRoom?.duelLive?.matchIndex,
+    onlineRoom?.duelLive?.roundStartedAt,
+    onlineRoom?.duelLive?.isFinished,
+    onlineLiveSpeed,
+    onlineRoom?.liveSpeed,
+  ]);
+
+  useEffect(() => {
+    if (!soloLiveMatch) return undefined;
+
+    const interval = window.setInterval(() => {
+      setSoloLiveMatch((currentLiveMatch) => {
+        if (!currentLiveMatch) return null;
+
+        const nextMinute = currentLiveMatch.minute + 1;
+
+        if (nextMinute > 90) {
+          window.clearInterval(interval);
+
+          const finishedRound = currentLiveMatch.match?.round || 0;
+
+          setRevealedMatchesCount((currentCount) =>
+            Math.min(
+              Math.max(currentCount, finishedRound),
+              leagueResult?.userMatches?.length || currentCount
+            )
+          );
+
+          window.setTimeout(() => {
+            currentMatchRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          }, 80);
+
+          return null;
+        }
+
+        return {
+          ...currentLiveMatch,
+          minute: nextMinute,
+        };
+      });
+    }, getOnlineLiveSpeedInterval(onlineLiveSpeed));
+
+    return () => window.clearInterval(interval);
+  }, [soloLiveMatch?.match?.round, leagueResult, onlineLiveSpeed]);
 
   const openSlots = useMemo(() => {
     if (!selectedFormation) return [];
@@ -2106,11 +5011,129 @@ function App() {
       });
   }, [currentTeam, lineup, openSlots]);
 
+  useEffect(() => {
+    if (screen !== "online-draft") return undefined;
+    if (!onlineRoom || !onlineDraftState || onlineDraftState.isComplete) return undefined;
+    if (onlineRoom.config.pickTime === "none") return undefined;
+
+    const currentParticipant = getOnlineCurrentParticipant(
+      onlineDraftOrder,
+      onlineDraftState.currentTurnIndex
+    );
+
+    if (!currentParticipant || currentParticipant.id !== localParticipantId) {
+      setOnlinePickCountdown(null);
+      return undefined;
+    }
+
+    if (onlinePickCountdown === null) {
+      setOnlinePickCountdown(Number(onlineRoom.config.pickTime));
+      return undefined;
+    }
+
+    if (onlinePickCountdown <= 0) {
+      handleOnlineAutoPick();
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setOnlinePickCountdown((currentValue) =>
+        currentValue === null ? null : Math.max(0, currentValue - 1)
+      );
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    screen,
+    onlineRoom,
+    onlineDraftState,
+    onlineDraftOrder,
+    onlinePickCountdown,
+    localParticipantId,
+  ]);
+
+  useEffect(() => {
+    if (screen !== "online-draft" || !onlineDraftState || onlineDraftState.isComplete) return;
+
+    setOnlinePickCountdown(
+      onlineRoom?.config?.pickTime === "none" ? null : Number(onlineRoom.config.pickTime)
+    );
+  }, [onlineDraftState?.currentTurnIndex, onlineDraftState?.picksMadeThisTurn, screen]);
+
+  // Se o host estiver no draft e o jogador do turno atual já saiu da sala,
+  // avança automaticamente o estado pra não travar o draft pros demais.
+  useEffect(() => {
+    if (!isOnlineHost || screen !== "online-draft" || !onlineRoom || !onlineDraftState || onlineDraftState.isComplete) return;
+
+    const current = getOnlineCurrentParticipant(onlineDraftOrder, onlineDraftState.currentTurnIndex);
+    if (!current) return;
+
+    const stillInRoom = onlineRoom.participants?.some((p) => p.id === current.id);
+    if (stillInRoom) return;
+
+    const nextState = getNextOnlineDraftState(onlineDraftState);
+    patchRoomDocument(onlineRoom.code, { draftState: nextState }).catch(console.error);
+  }, [isOnlineHost, screen, onlineRoom, onlineDraftState, onlineDraftOrder]);
+
   function startDraft() {
     setScreen("formations");
   }
 
-  function goHome() {
+  async function leaveCurrentOnlineRoom() {
+    if (!onlineRoom?.code || !localParticipantId) return;
+
+    try {
+      await leaveRoomDocument(onlineRoom.code, localParticipantId);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function exitOnlineRoom() {
+    await leaveCurrentOnlineRoom();
+    resetOnlineSessionState();
+    await enterOnlineScreen("online-home");
+  }
+
+  function renderExitOnlineRoomButton(className = "") {
+    return (
+      <button
+        type="button"
+        onClick={exitOnlineRoom}
+        className={
+          className ||
+          "inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-black text-rose-800 transition hover:bg-rose-100"
+        }
+      >
+        <X size={16} />
+        Sair da sala
+      </button>
+    );
+  }
+
+  function resetOnlineSessionState() {
+    clearActiveRoomCode();
+    setSavedRoomCode("");
+    setResumeRoomFeedback("");
+    setOnlineRoom(null);
+    setOnlineDraftOrder([]);
+    setIsDrawingOnlineOrder(false);
+    setRollingOnlineParticipant("");
+    setOnlineDraftState(null);
+    setOnlinePendingSelection(null);
+    setOnlinePickCountdown(null);
+    setOnlineLeagueResult(null);
+    setOnlineRevealedRounds(0);
+    setDismissedOnlineChampionModal(false);
+    myParticipantIdRef.current = "";
+    hasSeenSelfInRoomRef.current = false;
+  }
+
+  async function goHome() {
+    if (onlineRoom?.code) {
+      await leaveCurrentOnlineRoom();
+    }
+
     setScreen("home");
     setSelectedFormation(null);
     setGameMode("normal");
@@ -2123,6 +5146,123 @@ function App() {
     setLeagueResult(null);
     setRevealedMatchesCount(0);
     setCopiedResult(false);
+    resetOnlineSessionState();
+  }
+
+  function restartSoloFromFormation() {
+    setLineup([]);
+    setCurrentTeam(null);
+    setRollingTeam(null);
+    setIsRolling(false);
+    setRerollsRemaining(getDraftRerollLimit(gameMode));
+    setPendingSelection(null);
+    setLeagueResult(null);
+    setRevealedMatchesCount(0);
+    setSoloLiveMatch(null);
+    setCopiedResult(false);
+    setShareImageUrl("");
+    setShareMessage("");
+    setScreen("formations");
+  }
+
+  async function restartOnlineFromLobby() {
+    if (!onlineRoom) {
+      openOnlineSetup();
+      return;
+    }
+
+    if (!isOnlineHost) return;
+
+    await clearOnlineLeagueResult(onlineRoom.code);
+    await patchRoomDocument(onlineRoom.code, {
+      status: "lobby",
+      draftOrder: [],
+      draftState: null,
+      isDrawingOrder: false,
+      rollingParticipant: "",
+      leagueResult: null,
+      leagueResultStored: false,
+      duelResult: null,
+      revealedRounds: 0,
+      liveRound: null,
+      duelLive: null,
+    });
+
+    setOnlineLiveRound(null);
+    setOnlineDuelLive(null);
+    setOnlinePendingSelection(null);
+    setOnlinePickCountdown(null);
+    setDismissedOnlineChampionModal(false);
+  }
+
+  function updateOnlineRoomConfig(field, value) {
+    if (!isOnlineHost || !onlineRoom) return;
+
+    setOnlineRoom((currentRoom) => {
+      if (!currentRoom) return currentRoom;
+
+      const nextConfig = {
+        ...currentRoom.config,
+        [field]: value,
+      };
+
+      if (field === "draftType") {
+        nextConfig.draftType = value;
+      }
+
+      if (field === "difficulty") {
+        nextConfig.difficulty = value;
+      }
+
+      if (field === "pickTime") {
+        nextConfig.pickTime = value;
+      }
+
+      if (field === "cardsPerTurn") {
+        nextConfig.cardsPerTurn = Number(value);
+      }
+
+      if (field === "picksPerTurn") {
+        nextConfig.picksPerTurn = Number(value);
+      }
+
+      if (field === "duelFormat") {
+        nextConfig.duelFormat = value;
+
+        if (!duelFormatAllowsExtraTime(value)) {
+          nextConfig.duelExtraTime = false;
+        }
+
+        if (duelFormatRequiresPenalties(value)) {
+          nextConfig.duelPenalties = true;
+        }
+      }
+
+      if (field === "duelExtraTime") {
+        nextConfig.duelExtraTime = duelFormatAllowsExtraTime(nextConfig.duelFormat) ? Boolean(value) : false;
+
+        if (nextConfig.duelExtraTime) {
+          nextConfig.duelPenalties = true;
+        }
+      }
+
+      if (field === "duelPenalties") {
+        nextConfig.duelPenalties =
+          nextConfig.duelExtraTime || duelFormatRequiresPenalties(nextConfig.duelFormat)
+            ? true
+            : Boolean(value);
+      }
+
+      const normalizedConfig = getDuelConfigWithRules(nextConfig);
+      const nextRoom = {
+        ...currentRoom,
+        config: normalizedConfig,
+      };
+
+      patchRoomDocument(currentRoom.code, { config: normalizedConfig }).catch(console.error);
+
+      return nextRoom;
+    });
   }
 
   function chooseFormation(formation) {
@@ -2139,9 +5279,888 @@ function App() {
     setPendingSelection(null);
     setLeagueResult(null);
     setRevealedMatchesCount(0);
+    setSoloLiveMatch(null);
     setCopiedResult(false);
     setScreen("draft");
   }
+
+  function openOnlineSetup() {
+    handleEnterOnlineClick("online-setup");
+  }
+
+  function openOnlineJoin() {
+    setJoinRoomCode("");
+    setJoinRoomFeedback("");
+    handleEnterOnlineClick("online-join");
+  }
+
+  function openOnlineMatchmaking() {
+    handleEnterOnlineClick("online-matchmaking");
+  }
+
+  async function tryJoinOnlineRoom() {
+    const normalizedCode = joinRoomCode.trim().toUpperCase();
+
+    if (!normalizedCode) {
+      setJoinRoomFeedback("Digite o código da sala para entrar.");
+      return;
+    }
+
+    if (!onlineSetup.playerName.trim()) {
+      setJoinRoomFeedback("Digite seu nome para entrar na sala.");
+      return;
+    }
+
+    if (!onlineSetup.teamName.trim()) {
+      setJoinRoomFeedback("Digite o nome do seu time para entrar na sala.");
+      return;
+    }
+
+    setIsJoiningOnlineRoom(true);
+    setJoinRoomFeedback("");
+
+    try {
+      const room = await fetchRoomByCode(normalizedCode);
+
+      if (!room) {
+        setJoinRoomFeedback("Sala não encontrada. Confira o código e tente de novo.");
+        return;
+      }
+
+      if (room.status !== "lobby") {
+        setJoinRoomFeedback("Essa sala já está em andamento. Só é possível entrar enquanto ela estiver no lobby.");
+        return;
+      }
+
+      await ensureOnlineApi();
+      const playerId = localParticipantIdRef.current || localParticipantId;
+      const selectedFormation = getFormationById(onlineSetup.formationId);
+      const participant = {
+        id: playerId,
+        playerName: onlineSetup.playerName.trim() || "Jogador",
+        teamName: onlineSetup.teamName.trim() || "Meu XI",
+        formationId: selectedFormation.id,
+        formationName: selectedFormation.name,
+        isHost: false,
+        isReady: true,
+      };
+
+      // Lock the exact id we used to join this room (used for ejection checks and heartbeats).
+      myParticipantIdRef.current = playerId;
+      localParticipantIdRef.current = playerId;
+      setLocalParticipantId(playerId);
+
+      await joinRoomDocument(normalizedCode, participant);
+
+      rememberActiveRoomCode(normalizedCode);
+      setSavedRoomCode(normalizedCode);
+      applyRemoteRoomState({
+        ...room,
+        participants: [...(room.participants || []), participant],
+        participantIds: [
+          ...(room.participantIds || (room.participants || []).map((entry) => entry.id)),
+          playerId,
+        ],
+      });
+      setScreen("online-lobby");
+    } catch (error) {
+      setJoinRoomFeedback(error?.message || "Não foi possível entrar na sala.");
+    } finally {
+      setIsJoiningOnlineRoom(false);
+    }
+  }
+
+  function updateMatchmakingSetup(field, value) {
+    setMatchmakingSetup((currentSetup) => ({
+      ...currentSetup,
+      [field]: value,
+    }));
+  }
+
+  async function refreshLobbyRooms() {
+    setIsLoadingLobbyRooms(true);
+    setLobbyRoomsFeedback("");
+
+    try {
+      await cleanupOldRooms();
+      const rooms = await listLobbyRooms({
+        onlineMode: matchmakingSetup.onlineMode,
+        difficulty:
+          matchmakingSetup.onlineMode === "league" ? matchmakingSetup.difficulty : null,
+      });
+      setLobbyRooms(rooms);
+    } catch (error) {
+      console.error(error);
+      setLobbyRoomsFeedback("Não foi possível carregar as salas abertas.");
+    } finally {
+      setIsLoadingLobbyRooms(false);
+    }
+  }
+
+  async function joinLobbyRoom(roomCode) {
+    const normalizedCode = String(roomCode || "").trim().toUpperCase();
+
+    if (!onlineSetup.teamName.trim()) {
+      setLobbyRoomsFeedback("Digite o nome do seu time antes de entrar.");
+      return;
+    }
+
+    setJoiningLobbyRoomCode(normalizedCode);
+    setLobbyRoomsFeedback("");
+
+    try {
+      await ensureOnlineApi();
+
+      // Use live UID for the join identity (joinRoomDocument will also enforce it).
+      const playerId = await (async () => {
+        try {
+          const api = onlineApiRef.current;
+          if (api && typeof api.ensureAnonymousAuth === "function") {
+            return await api.ensureAnonymousAuth();
+          }
+        } catch {}
+        return localParticipantIdRef.current || localParticipantId;
+      })();
+
+      const room = await fetchRoomByCode(normalizedCode);
+
+      if (!room) {
+        setLobbyRoomsFeedback("Sala não encontrada.");
+        return;
+      }
+
+      if (room.status !== "lobby") {
+        setLobbyRoomsFeedback("Essa sala já começou.");
+        await refreshLobbyRooms();
+        return;
+      }
+
+      const selectedFormation = getFormationById(onlineSetup.formationId);
+      const participant = {
+        id: playerId,
+        playerName: onlineSetup.playerName.trim() || "Jogador",
+        teamName: onlineSetup.teamName.trim() || "Meu XI",
+        formationId: selectedFormation.id,
+        formationName: selectedFormation.name,
+        isHost: false,
+        isReady: true,
+      };
+
+      // Lock the exact id we used to join this room (used for ejection checks and heartbeats).
+      myParticipantIdRef.current = playerId;
+      localParticipantIdRef.current = playerId;
+      setLocalParticipantId(playerId);
+
+      await joinRoomDocument(normalizedCode, participant);
+      rememberActiveRoomCode(normalizedCode);
+      setSavedRoomCode(normalizedCode);
+      applyRemoteRoomState({
+        ...room,
+        participants: [...(room.participants || []), participant],
+        participantIds: [...(room.participantIds || []), playerId],
+      });
+      setScreen("online-lobby");
+    } catch (error) {
+      const message = error?.message || "Não foi possível entrar na sala.";
+      if (error?.code === "permission-denied" || /permission|insufficient|Missing or insufficient/i.test(message)) {
+        setLobbyRoomsFeedback(
+          "Erro de permissão. Verifique se o login anônimo está ativado no Firebase e se as regras do Firestore estão publicadas."
+        );
+      } else {
+        setLobbyRoomsFeedback(message);
+      }
+    } finally {
+      setJoiningLobbyRoomCode("");
+    }
+  }
+
+  function updateOnlineSetup(field, value) {
+    setOnlineSetup((currentSetup) => {
+      const nextSetup = {
+        ...currentSetup,
+        [field]: value,
+      };
+
+      if (field === "duelFormat") {
+        if (!duelFormatAllowsExtraTime(value)) {
+          nextSetup.duelExtraTime = false;
+        }
+
+        if (duelFormatRequiresPenalties(value)) {
+          nextSetup.duelPenalties = true;
+        }
+      }
+
+      if (field === "duelExtraTime") {
+        if (!duelFormatAllowsExtraTime(currentSetup.duelFormat)) {
+          nextSetup.duelExtraTime = false;
+        }
+
+        if (value) {
+          nextSetup.duelPenalties = true;
+        }
+      }
+
+      if (field === "duelPenalties") {
+        if (currentSetup.duelExtraTime || duelFormatRequiresPenalties(currentSetup.duelFormat)) {
+          nextSetup.duelPenalties = true;
+        }
+      }
+
+      return nextSetup;
+    });
+  }
+
+  async function createOnlineRoom() {
+    const selectedOnlineFormation = getFormationById(onlineSetup.formationId);
+    await ensureOnlineApi();
+
+    // Always get the *live* UID right before building the room payload.
+    // The service layer will also enforce this UID to satisfy security rules.
+    const playerId = await (async () => {
+      try {
+        const api = onlineApiRef.current;
+        if (api && typeof api.ensureAnonymousAuth === "function") {
+          const liveUid = await api.ensureAnonymousAuth();
+          console.log("[createOnlineRoom] live uid from ensure before build:", liveUid);
+          return liveUid;
+        }
+      } catch (e) {
+        console.warn("[createOnlineRoom] failed to get live uid, falling back", e);
+      }
+      const fallback = localParticipantIdRef.current || localParticipantId;
+      console.log("[createOnlineRoom] using fallback playerId:", fallback);
+      return fallback;
+    })();
+
+    const roomCode = createRoomCode();
+
+    const hostParticipant = {
+      id: playerId,
+      playerName: onlineSetup.playerName.trim() || "Jogador",
+      teamName: onlineSetup.teamName.trim() || "Meu XI",
+      formationId: selectedOnlineFormation.id,
+      formationName: selectedOnlineFormation.name,
+      isHost: true,
+      isReady: true,
+    };
+
+    const room = {
+      id: roomCode,
+      code: roomCode,
+      roomName: onlineSetup.roomName.trim() || "Sala 38–0",
+      status: "lobby",
+      hostId: playerId,
+      config: {
+        ...onlineSetup,
+        roomName: onlineSetup.roomName.trim() || "Sala 38–0",
+        teamName: onlineSetup.teamName.trim() || "Meu XI",
+        playerName: onlineSetup.playerName.trim() || "Jogador",
+        formationId: selectedOnlineFormation.id,
+        maxPlayers: onlineSetup.onlineMode === "duel" ? 2 : 20,
+        cardsPerTurn: Number(onlineSetup.cardsPerTurn),
+        picksPerTurn: Number(onlineSetup.picksPerTurn),
+      },
+      participants: [hostParticipant],
+      participantIds: [playerId],
+      draftOrder: [],
+      draftState: null,
+      isDrawingOrder: false,
+      rollingParticipant: "",
+      leagueResult: null,
+      leagueResultStored: false,
+      duelResult: null,
+      revealedRounds: 0,
+      liveRound: null,
+      duelLive: null,
+      liveSpeed: "normal",
+    };
+
+    setIsCreatingOnlineRoom(true);
+
+    try {
+      const created = await createRoomDocument(room);
+      const effectiveId = created?.hostId || playerId;
+
+      myParticipantIdRef.current = effectiveId;
+      localParticipantIdRef.current = effectiveId;
+      setLocalParticipantId(effectiveId);
+      setSavedRoomCode(roomCode);
+      applyRemoteRoomState(created || room);
+      syncHostLiveSpeedFromRoom(created || room);
+      setScreen("online-lobby");
+    } catch (error) {
+      const message = error?.message || "Não foi possível criar a sala.";
+      console.error("Failed to create online room:", error?.message || error);
+
+
+      // Surface permission errors more clearly (often means anonymous auth is disabled or rules need deploy)
+      if (error?.code === "permission-denied" || /permission|insufficient|Missing or insufficient/i.test(message)) {
+        window.alert(
+          "Erro de permissão ao criar a sala (Missing or insufficient permissions).\n\n" +
+            "Regras publicadas estão corretas (você confirmou). Anonymous está ativado.\n\n" +
+            "Possíveis causas restantes:\n" +
+            "• O auth token não está sendo enviado junto com o setDoc (veja o log 'live auth.currentUser?.uid at write time').\n" +
+            "• Build antigo em cache no navegador.\n" +
+            "• Sessão anônima 'velha' com problema.\n\n" +
+            "FAÇA ISSO AGORA:\n" +
+            "1. Pare o dev server, rode `npm run dev` de novo.\n" +
+            "2. Abra uma janela **Anônima/Incognito** do navegador.\n" +
+            "3. Acesse a página, vá até criar sala.\n" +
+            "4. ANTES de clicar em Criar, abra o Console (F12).\n" +
+            "5. Clique em Criar sala e cole aqui **tudo** que aparecer com [createRoom].\n\n" +
+            "Procure especialmente a linha:\n" +
+            "  [createRoom] live auth.currentUser?.uid at write time: xxxxx\n\n" +
+            "Detalhe técnico: " + message
+        );
+      } else {
+        window.alert(message);
+      }
+    } finally {
+      setIsCreatingOnlineRoom(false);
+    }
+  }
+
+  async function startOnlineOrderScreen() {
+    if (!isOnlineHost || !onlineRoom || onlineRoom.participants.length < 2) return;
+
+    await patchRoomDocument(onlineRoom.code, {
+      status: "order",
+      draftOrder: [],
+      rollingParticipant: "",
+      isDrawingOrder: false,
+    });
+  }
+
+  async function startOnlineOrderDraw() {
+    if (!isOnlineHost || !onlineRoom || isDrawingOnlineOrder) return;
+
+    const finalOrder = shuffleArray(onlineRoom.participants);
+
+    await patchRoomDocument(onlineRoom.code, {
+      draftOrder: [],
+      rollingParticipant: "",
+      isDrawingOrder: true,
+    });
+
+    finalOrder.forEach((participant, index) => {
+      window.setTimeout(() => {
+        patchRoomDocument(onlineRoom.code, {
+          rollingParticipant: participant.teamName,
+        }).catch(console.error);
+      }, index * 780);
+
+      window.setTimeout(() => {
+        const nextOrder = finalOrder.slice(0, index + 1);
+
+        patchRoomDocument(onlineRoom.code, {
+          draftOrder: nextOrder,
+          rollingParticipant: "",
+          isDrawingOrder: index < finalOrder.length - 1,
+        }).catch(console.error);
+      }, index * 780 + 520);
+    });
+  }
+
+  function createOnlineDraftStateFromRoom(room, order) {
+    const lineupsMap = Object.fromEntries(order.map((participant) => [participant.id, []]));
+    const pickedPlayerKeys = [];
+    const currentParticipant = getOnlineCurrentParticipant(order, 0);
+    const draftOptions = dealOnlineDraftOptions({
+      room,
+      lineupsMap,
+      pickedPlayerKeys,
+      participant: currentParticipant,
+    });
+
+    return {
+      currentTurnIndex: 0,
+      picksMadeThisTurn: 0,
+      lineupsMap,
+      pickedPlayerKeys,
+      currentCards: draftOptions.currentCards,
+      currentTeamOption: draftOptions.currentTeamOption,
+      log: [],
+      isComplete: false,
+    };
+  }
+
+  async function goToOnlineDraftPreview() {
+    if (!isOnlineHost || !onlineRoom || !onlineDraftOrder.length) return;
+
+    const draftState = createOnlineDraftStateFromRoom(onlineRoom, onlineDraftOrder);
+
+    setOnlinePendingSelection(null);
+    setOnlinePickCountdown(onlineRoom.config.pickTime === "none" ? null : Number(onlineRoom.config.pickTime));
+
+    await patchRoomDocument(onlineRoom.code, {
+      status: "draft",
+      draftState,
+    });
+  }
+
+  function getNextOnlineDraftState(currentState) {
+    if (!onlineRoom || !currentState) return currentState;
+
+    let nextTurnIndex = currentState.currentTurnIndex + 1;
+    let nextParticipant = getOnlineCurrentParticipant(onlineDraftOrder, nextTurnIndex);
+    let safety = 0;
+
+    while (
+      nextParticipant &&
+      getOnlineOpenSlots(nextParticipant, currentState.lineupsMap).length === 0 &&
+      safety < onlineDraftOrder.length * 12
+    ) {
+      nextTurnIndex += 1;
+      nextParticipant = getOnlineCurrentParticipant(onlineDraftOrder, nextTurnIndex);
+      safety += 1;
+    }
+
+    const isComplete = areOnlineLineupsComplete(onlineDraftOrder, currentState.lineupsMap);
+
+    if (isComplete || !nextParticipant) {
+      return {
+        ...currentState,
+        isComplete: true,
+        currentCards: [],
+        currentTeamOption: null,
+      };
+    }
+
+    return {
+      ...currentState,
+      currentTurnIndex: nextTurnIndex,
+      picksMadeThisTurn: 0,
+      ...dealOnlineDraftOptions({
+        room: onlineRoom,
+        lineupsMap: currentState.lineupsMap,
+        pickedPlayerKeys: currentState.pickedPlayerKeys,
+        participant: nextParticipant,
+      }),
+    };
+  }
+
+  async function applyOnlinePick(card, source = "manual", forcedSlot = null) {
+    if (!onlineRoom || !onlineDraftState || onlineDraftState.isComplete || !card) return;
+
+    const participant = getOnlineCurrentParticipant(
+      onlineDraftOrder,
+      onlineDraftState.currentTurnIndex
+    );
+
+    if (!participant || participant.id !== localParticipantId) return;
+
+    // Proteção extra: se o jogador do turno atual não está mais na sala, não permite pick
+    const stillInRoom = onlineRoom.participants?.some((p) => p.id === participant.id);
+    if (!stillInRoom) return;
+
+    const openSlots = getOnlineOpenSlots(participant, onlineDraftState.lineupsMap);
+    const compatibleSlots = getOnlineCardCompatibleSlots(card, openSlots);
+
+    if (!compatibleSlots.length) return;
+
+    const slot = forcedSlot && compatibleSlots.some((compatibleSlot) => compatibleSlot.index === forcedSlot.index)
+      ? forcedSlot
+      : compatibleSlots[0];
+    const participantLineup = onlineDraftState.lineupsMap[participant.id] || [];
+    const nextLineupsMap = {
+      ...onlineDraftState.lineupsMap,
+      [participant.id]: [
+        ...participantLineup,
+        {
+          slotIndex: slot.index,
+          slotPosition: slot.position,
+          player: card.player,
+          team: card.team,
+        },
+      ],
+    };
+    const nextPickedKeys = [...onlineDraftState.pickedPlayerKeys, card.identityKey];
+    const picksNeededThisTurn = getOnlinePicksNeededThisTurn(
+      participant,
+      onlineDraftState.lineupsMap,
+      onlineRoom.config.picksPerTurn
+    );
+    const nextPicksMadeThisTurn = onlineDraftState.picksMadeThisTurn + 1;
+    const nextLog = [
+      {
+        id: `${Date.now()}-${card.id}`,
+        participant: participant.teamName,
+        player: card.player.name,
+        team: card.team.label,
+        source,
+      },
+      ...onlineDraftState.log,
+    ].slice(0, 8);
+
+    let nextState = {
+      ...onlineDraftState,
+      lineupsMap: nextLineupsMap,
+      pickedPlayerKeys: nextPickedKeys,
+      picksMadeThisTurn: nextPicksMadeThisTurn,
+      currentCards: onlineDraftState.currentCards.filter((currentCard) => currentCard.id !== card.id),
+      log: nextLog,
+    };
+
+    const participantIsComplete = getOnlineOpenSlots(participant, nextLineupsMap).length === 0;
+    const shouldAdvanceTurn = nextPicksMadeThisTurn >= picksNeededThisTurn || participantIsComplete;
+
+    if (areOnlineLineupsComplete(onlineDraftOrder, nextLineupsMap)) {
+      nextState = {
+        ...nextState,
+        isComplete: true,
+        currentCards: [],
+        currentTeamOption: null,
+      };
+    } else if (shouldAdvanceTurn) {
+      nextState = getNextOnlineDraftState(nextState);
+    }
+
+    setOnlinePendingSelection(null);
+    setOnlinePickCountdown(
+      onlineRoom.config.pickTime === "none" || nextState.isComplete
+        ? null
+        : Number(onlineRoom.config.pickTime)
+    );
+
+    try {
+      await patchRoomDocument(onlineRoom.code, { draftState: nextState });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  function handleOnlineCardClick(card) {
+    if (!onlineRoom || !onlineDraftState || onlineDraftState.isComplete || !card) return;
+
+    const participant = getOnlineCurrentParticipant(
+      onlineDraftOrder,
+      onlineDraftState.currentTurnIndex
+    );
+
+    if (!participant || participant.id !== localParticipantId) return;
+
+    const openSlots = getOnlineOpenSlots(participant, onlineDraftState.lineupsMap);
+    const compatibleSlots = getOnlineCardCompatibleSlots(card, openSlots);
+
+    if (!compatibleSlots.length) return;
+
+    if (compatibleSlots.length === 1) {
+      applyOnlinePick(card, "manual", compatibleSlots[0]);
+      return;
+    }
+
+    setOnlinePendingSelection({
+      card,
+      player: card.player,
+      team: card.team,
+      compatibleSlots,
+    });
+  }
+
+  function handleOnlinePendingSlotClick(slot) {
+    if (!onlinePendingSelection) return;
+
+    applyOnlinePick(onlinePendingSelection.card, "manual", slot);
+  }
+
+  function handleOnlineAutoPick() {
+    if (!onlineRoom || !onlineDraftState || onlineDraftState.isComplete) return;
+
+    const participant = getOnlineCurrentParticipant(
+      onlineDraftOrder,
+      onlineDraftState.currentTurnIndex
+    );
+
+    if (!participant) return;
+
+    const stillInRoom = onlineRoom.participants?.some((p) => p.id === participant.id);
+    if (!stillInRoom) return;
+
+    const openSlots = getOnlineOpenSlots(participant, onlineDraftState.lineupsMap);
+    const shuffledOpenSlots = shuffleArray(openSlots);
+    let candidates = [];
+
+    for (const slot of shuffledOpenSlots) {
+      candidates = onlineDraftState.currentCards.filter((card) =>
+        canOnlineCardFitOpenSlot(card, slot)
+      );
+
+      if (candidates.length) break;
+    }
+
+    const fallbackCandidates = candidates.length ? candidates : onlineDraftState.currentCards;
+    const randomCard = fallbackCandidates[Math.floor(Math.random() * fallbackCandidates.length)];
+
+    if (!randomCard) {
+      setOnlineDraftState((currentState) => getNextOnlineDraftState(currentState));
+      setOnlinePickCountdown(onlineRoom.config.pickTime === "none" ? null : Number(onlineRoom.config.pickTime));
+      return;
+    }
+
+    setOnlinePendingSelection(null);
+    applyOnlinePick(randomCard, "auto");
+  }
+
+
+  async function startOnlineBrazilianLeague() {
+    if (!isOnlineHost || !onlineRoom || !onlineDraftState?.isComplete) return;
+    setIsStartingOnlineLeague(true);
+
+    const result = simulateOnlineBrazilianLeague(
+      onlineRoom,
+      onlineDraftOrder,
+      onlineDraftState.lineupsMap
+    );
+
+    const slimResult = slimLeagueResultForFirestore(result);
+
+    try {
+      // Re-ensure and double-check we are still the current host before privileged writes.
+      // This protects against host promotion races or any id drift in long sessions.
+      await ensureOnlineApi();
+      const currentId = localParticipantIdRef.current || localParticipantId;
+      const amStillHost = onlineRoom.hostId === currentId ||
+        Boolean(onlineRoom.participants?.find((p) => p.id === currentId)?.isHost);
+      if (!amStillHost) {
+        window.alert("Você não é mais o host desta sala.");
+        return;
+      }
+
+      await withRetry(() => saveOnlineLeagueResult(onlineRoom.code, slimResult));
+
+      const leagueUpdates = {
+        status: "league",
+        leagueResultStored: true,
+        leagueResult: null,
+        draftState: null,
+        revealedRounds: 0,
+        liveRound: null,
+        liveSpeed: onlineLiveSpeed || "normal",
+        duelLive: null,
+      };
+      // remove any undefined (Firestore hates undefined)
+      const cleanLeagueUpdates = Object.fromEntries(
+        Object.entries(leagueUpdates).filter(([, v]) => v !== undefined)
+      );
+
+      await withRetry(() => patchRoomDocument(onlineRoom.code, cleanLeagueUpdates));
+
+      // Success: set local result immediately for the starter (full result) so UI shows right away.
+      // Other players will receive via the leagueData subdoc + subscription.
+      setDismissedOnlineChampionModal(false);
+      setOnlineLeagueResult(result);
+      setScreen("online-league");
+    } catch (error) {
+      console.error("Failed to start online league:", error);
+      const detail = error?.code || error?.message || String(error);
+      window.alert(
+        "Não foi possível sincronizar o Brasileirão com os outros jogadores.\n\n" +
+        "Detalhe técnico: " + detail + "\n\n" +
+        "Possíveis causas: sua sessão de autenticação anônima mudou (recarregue a página) ou o hostId no servidor não bate mais com seu UID atual. " +
+        "Tente sair da sala e entrar novamente, ou recarregar ambos os navegadores."
+      );
+    } finally {
+      setIsStartingOnlineLeague(false);
+    }
+  }
+
+  async function updateOnlineLiveSpeed(speed) {
+    if (!isOnlineHost) return;
+
+    const previousSpeed = liveSpeedRef.current;
+    liveSpeedRef.current = speed;
+    setOnlineLiveSpeed(speed);
+
+    const room = onlineRoomRef.current;
+    if (room) {
+      onlineRoomRef.current = {
+        ...room,
+        liveSpeed: speed,
+      };
+    }
+
+    if (!onlineRoom?.code) return;
+
+    try {
+      const updates = { liveSpeed: speed };
+
+      if (room?.liveRound?.roundStartedAt && room.status === "league") {
+        const currentMinute = getLiveMinuteFromStartedAt(
+          room.liveRound.roundStartedAt,
+          previousSpeed
+        );
+
+        updates.liveRound = {
+          ...room.liveRound,
+          roundStartedAt: Date.now() - currentMinute * getOnlineLiveSpeedInterval(speed),
+        };
+      }
+
+      if (room?.duelLive?.roundStartedAt && room.status === "duel" && !room.duelLive.isFinished) {
+        const match = room.duelResult?.matches?.[room.duelLive.matchIndex];
+        const endMinute = match ? getDuelLiveEndMinute(match) : 90;
+        const currentMinute = getLiveMinuteFromStartedAt(
+          room.duelLive.roundStartedAt,
+          previousSpeed,
+          endMinute
+        );
+
+        updates.duelLive = {
+          ...room.duelLive,
+          roundStartedAt: Date.now() - currentMinute * getOnlineLiveSpeedInterval(speed),
+        };
+      }
+
+      await patchRoomDocument(onlineRoom.code, updates);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function revealNextOnlineRound() {
+    if (!isOnlineHost || !onlineRoom || !onlineLeagueResult || onlineRoom.liveRound || onlineLiveRound) {
+      return;
+    }
+
+    const round = onlineLeagueResult.rounds[onlineRevealedRounds];
+    if (!round) return;
+
+    try {
+      await patchRoomDocument(onlineRoom.code, {
+        liveRound: {
+          roundNumber: round.round,
+          minute: 0,
+          roundStartedAt: Date.now(),
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      window.alert("Não foi possível iniciar a rodada ao vivo.");
+    }
+  }
+
+  async function simulateAllOnlineRounds() {
+    if (!isOnlineHost || !onlineRoom || !onlineLeagueResult) return;
+
+    try {
+      await patchRoomDocument(onlineRoom.code, {
+        liveRound: null,
+        revealedRounds: onlineLeagueResult.rounds.length,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function startOnlineDuel() {
+    if (!isOnlineHost || !onlineRoom || !onlineDraftState?.isComplete) return;
+
+    const result = simulateOnlineDuel(
+      onlineRoom,
+      onlineDraftOrder,
+      onlineDraftState.lineupsMap
+    );
+
+    if (!result) return;
+
+    try {
+      await ensureOnlineApi();
+      const currentId = localParticipantIdRef.current || localParticipantId;
+      const amStillHost = onlineRoom.hostId === currentId ||
+        Boolean(onlineRoom.participants?.find((p) => p.id === currentId)?.isHost);
+      if (!amStillHost) {
+        window.alert("Você não é mais o host desta sala.");
+        return;
+      }
+
+      const duelUpdates = {
+        status: "duel",
+        duelResult: result,
+        liveRound: null,
+        liveSpeed: onlineLiveSpeed || "normal",
+        duelLive: {
+          matchIndex: 0,
+          minute: 0,
+          isFinished: false,
+          roundStartedAt: Date.now(),
+        },
+      };
+      const cleanDuelUpdates = Object.fromEntries(
+        Object.entries(duelUpdates).filter(([, v]) => v !== undefined)
+      );
+
+      await withRetry(() => patchRoomDocument(onlineRoom.code, cleanDuelUpdates));
+
+      setOnlineDuelResult(result);
+      setScreen("online-duel");
+    } catch (error) {
+      console.error("Failed to start online duel:", error);
+      const detail = error?.code || error?.message || String(error);
+      window.alert(
+        "Não foi possível sincronizar o duelo com os outros jogadores.\n\n" +
+        "Detalhe técnico: " + detail + "\n\n" +
+        "Possíveis causas: sua sessão de autenticação anônima mudou (recarregue a página) ou o hostId no servidor não bate mais com seu UID atual. " +
+        "Tente sair da sala e entrar novamente, ou recarregar ambos os navegadores."
+      );
+    }
+  }
+
+  async function restartOnlineDuelLive() {
+    if (!isOnlineHost || !onlineRoom || !onlineDuelResult?.matches?.length) return;
+
+    try {
+      await patchRoomDocument(onlineRoom.code, {
+        duelLive: {
+          matchIndex: 0,
+          minute: 0,
+          isFinished: false,
+          roundStartedAt: Date.now(),
+        },
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function revealFullOnlineDuel() {
+    if (!isOnlineHost || !onlineRoom || !onlineDuelResult?.matches?.length) return;
+
+    const lastIndex = onlineDuelResult.matches.length - 1;
+
+    try {
+      await patchRoomDocument(onlineRoom.code, {
+        duelLive: {
+          matchIndex: lastIndex,
+          minute: getDuelLiveEndMinute(onlineDuelResult.matches[lastIndex]),
+          isFinished: true,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function startNextOnlineDuelMatch() {
+    if (!isOnlineHost || !onlineRoom || !onlineDuelResult?.matches?.length || !onlineDuelLive) return;
+
+    const nextIndex = (onlineDuelLive.matchIndex || 0) + 1;
+    if (!onlineDuelResult.matches[nextIndex]) return;
+
+    try {
+      await patchRoomDocument(onlineRoom.code, {
+        duelLive: {
+          matchIndex: nextIndex,
+          minute: 0,
+          isFinished: false,
+          roundStartedAt: Date.now(),
+        },
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
 
   function rollToTeam(finalTeam, roulettePool = getTeamsWithPlayers()) {
     if (isRolling || !finalTeam) return;
@@ -2196,7 +6215,6 @@ function App() {
       return;
     }
 
-    setRerollsRemaining(getDraftRerollLimit(gameMode));
     rollToTeam(getRandomHistoricalTeamWithPlayers(), teamsWithPlayers);
   }
 
@@ -2236,7 +6254,6 @@ function App() {
     ]);
 
     setCurrentTeam(null);
-    setRerollsRemaining(getDraftRerollLimit(gameMode));
     setPendingSelection(null);
   }
 
@@ -2274,6 +6291,7 @@ function App() {
     setPendingSelection(null);
     setLeagueResult(null);
     setRevealedMatchesCount(0);
+    setSoloLiveMatch(null);
     setCopiedResult(false);
   }
 
@@ -2282,6 +6300,7 @@ function App() {
 
     const result = simulateBrazilianLeague(lineup, selectedFormation);
     setLeagueResult(result);
+    setSoloLiveMatch(null);
     setCopiedResult(false);
     setShareImageUrl("");
     setShareMessage("");
@@ -2296,23 +6315,27 @@ function App() {
   }
 
   function revealNextMatch() {
-    if (!leagueResult) return;
+    if (!leagueResult || soloLiveMatch) return;
 
-    setRevealedMatchesCount((currentCount) => {
-      const nextCount = Math.min(currentCount + 1, leagueResult.userMatches.length);
+    const nextMatch = leagueResult.userMatches[revealedMatchesCount];
 
-      window.setTimeout(() => {
-        currentMatchRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }, 80);
+    if (!nextMatch) return;
 
-      return nextCount;
+    setSoloLiveMatch({
+      match: nextMatch,
+      minute: 0,
     });
   }
 
+  function simulateAllSoloMatches() {
+    if (!leagueResult) return;
+
+    setSoloLiveMatch(null);
+    setRevealedMatchesCount(leagueResult.userMatches.length);
+  }
+
   function finishCampaignSimulation() {
+    setSoloLiveMatch(null);
     setScreen("result");
   }
 
@@ -2395,52 +6418,76 @@ ${lineupText}`;
       throw new Error("Card de compartilhamento não foi encontrado.");
     }
 
-    await new Promise((resolve) => window.requestAnimationFrame(resolve));
-    await new Promise((resolve) => window.setTimeout(resolve, 160));
+    // Clonamos manualmente e renderizamos offscreen com position absolute + opacity 0.
+    // Isso força o layout correto no DOM (melhor que fixed negative para html2canvas)
+    // e evita flash visual. Copiamos os estilos inline do card (que já são self-contained).
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '0';
+    container.style.top = '0';
+    container.style.width = '920px';
+    container.style.background = '#f7f0df';
+    container.style.backgroundColor = '#f7f0df';
+    container.style.opacity = '0';
+    container.style.pointerEvents = 'none';
+    container.style.zIndex = '-99999';
+    document.body.appendChild(container);
 
-    const rect = element.getBoundingClientRect();
+    const clone = element.cloneNode(true);
+    // Força tema claro e fundo explícito no clone para evitar herança de tema escuro ou preto
+    clone.style.width = '920px';
+    clone.style.background = '#f7f0df';
+    clone.style.backgroundColor = '#f7f0df';
+    clone.style.color = '#0f172a';
+    clone.style.fontFamily = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    clone.style.position = 'relative';
+    clone.style.overflow = 'visible';
+    clone.style.boxSizing = 'border-box';
 
-    if (!rect.width || !rect.height) {
-      throw new Error("Card de compartilhamento está sem tamanho para captura.");
+    // Re-aplica os kits do campinho (gradientes dos uniformes)
+    // Garante que todos tenham background, mesmo se o atributo estiver faltando em algum caso
+    clone.querySelectorAll('.share-kit-ball').forEach((ball) => {
+      const bg = ball.getAttribute('data-kit-bg') || '#ffffff';
+      ball.style.background = bg;
+      // also set base color to prevent transparent in capture for some kits
+      const base = ball.getAttribute('data-base-color') || '#ffffff';
+      ball.style.backgroundColor = base;
+    });
+
+    container.appendChild(clone);
+
+    // Força reflow e múltiplos frames para garantir que tudo (pitch, tabelas, textos, kits) seja layoutado
+    void container.offsetHeight;
+    void clone.offsetHeight;
+    await new Promise((r) => window.requestAnimationFrame(r));
+    await new Promise((r) => window.requestAnimationFrame(r));
+    await new Promise((r) => window.setTimeout(r, 200));
+
+    try {
+      const canvas = await html2canvas(clone, {
+        backgroundColor: '#f7f0df',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        removeContainer: true,
+        foreignObjectRendering: true,
+        imageTimeout: 15000,
+      });
+
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Não foi possível criar o PNG.'));
+            return;
+          }
+          resolve(blob);
+        }, 'image/png', 1);
+      });
+    } finally {
+      if (container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
     }
-
-    const canvas = await html2canvas(element, {
-      backgroundColor: "#f7f0df",
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      removeContainer: true,
-      ignoreElements: (node) =>
-        node.tagName === "STYLE" ||
-        (node.tagName === "LINK" && node.getAttribute("rel") === "stylesheet"),
-      onclone: (clonedDocument) => {
-        // Remove CSS global do Tailwind no clone para evitar erro de cor oklch().
-        clonedDocument
-          .querySelectorAll("style, link[rel='stylesheet']")
-          .forEach((node) => node.remove());
-
-        const clonedElement = clonedDocument.body.querySelector("[data-share-card-root]");
-
-        if (clonedElement) {
-          clonedElement.style.width = "920px";
-          clonedElement.style.background = "#f7f0df";
-          clonedElement.style.color = "#0f172a";
-          clonedElement.style.fontFamily =
-            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-        }
-      },
-    });
-
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error("Não foi possível criar o PNG."));
-          return;
-        }
-
-        resolve(blob);
-      }, "image/png", 1);
-    });
   }
 
   async function generateShareImage() {
@@ -2574,12 +6621,2466 @@ ${lineupText}`;
     }
   }
 
+  if (screen.startsWith("online-") && !isOnlineApiReady) {
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        <section className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center px-6 text-center">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+            Modo online
+          </p>
+          <h1 className="mt-3 text-3xl font-black tracking-tight">
+            {onlineApiError ? "Não foi possível conectar" : "Preparando sincronização..."}
+          </h1>
+          <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
+            {onlineApiError
+              ? onlineApiError
+              : "O Firebase só carrega quando você entra no online. Isso deixa o modo solo mais rápido."}
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            {onlineApiError ? (
+              <button
+                type="button"
+                onClick={() => handleEnterOnlineClick(screen)}
+                className="force-dark-text rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-200"
+              >
+                Tentar de novo
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setOnlineApiError("");
+                setScreen("home");
+              }}
+              className="rounded-2xl border border-slate-900/10 bg-white px-5 py-3 text-sm font-black text-slate-800 transition hover:bg-slate-50"
+            >
+              Voltar ao início
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-home") {
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-5xl px-6 py-10">
+          <button
+            onClick={goHome}
+            className="mb-8 inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+          >
+            <ArrowLeft size={18} />
+            Voltar
+          </button>
+
+          <div className="rounded-[2rem] border border-slate-900/10 bg-white/80 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:p-8">
+            <div className="force-dark-text mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-950">
+              <Users size={18} />
+              Modo Online
+            </div>
+
+            <h1 className="text-4xl font-black tracking-tight md:text-6xl">
+              Jogar Online
+            </h1>
+            <p className="mt-4 max-w-2xl text-base font-bold leading-relaxed text-slate-600">
+              Crie uma sala para jogar com amigos, entre por código ou procure uma partida aleatória. As salas ficam sincronizadas em tempo real pelo Firebase.
+            </p>
+
+            {savedRoomCode ? (
+              <div className="mt-8 rounded-[1.75rem] border border-amber-300/70 bg-amber-50 px-5 py-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">
+                  Sala salva neste aparelho
+                </p>
+                <p className="mt-2 text-sm font-bold leading-relaxed text-amber-950">
+                  Código <span className="font-black tracking-[0.2em]">{savedRoomCode}</span>. Retome só se você ainda estiver jogando essa partida.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={resumeSavedOnlineRoom}
+                    disabled={isResumingOnlineRoom}
+                    className="rounded-2xl bg-amber-400 px-4 py-2 text-sm font-black text-amber-950 transition hover:bg-amber-300 disabled:opacity-60"
+                  >
+                    {isResumingOnlineRoom ? "Retomando..." : "Retomar sala"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={dismissSavedOnlineRoom}
+                    className="rounded-2xl border border-amber-400/60 bg-white px-4 py-2 text-sm font-black text-amber-900 transition hover:bg-amber-100"
+                  >
+                    Esquecer código
+                  </button>
+                </div>
+                {resumeRoomFeedback ? (
+                  <p className="mt-3 text-sm font-bold text-amber-900">{resumeRoomFeedback}</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className={`grid gap-4 md:grid-cols-3 ${savedRoomCode ? "mt-4" : "mt-8"}`}>
+              <button
+                type="button"
+                onClick={openOnlineSetup}
+                className="force-dark-text rounded-[1.75rem] border border-emerald-400/45 bg-emerald-300 p-5 text-left text-emerald-950 shadow-[0_16px_35px_rgba(16,185,129,0.18)] transition hover:-translate-y-1"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-950 text-white">
+                  <Users size={22} />
+                </div>
+                <h2 className="mt-5 text-2xl font-black">Criar sala</h2>
+                <p className="mt-2 text-sm font-bold leading-relaxed text-emerald-950/80">
+                  Crie uma sala, configure o modo, convide amigos e controle o início pelo lobby.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={openOnlineJoin}
+                className="rounded-[1.75rem] border border-slate-900/10 bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:border-emerald-400/50"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                  <Copy size={22} />
+                </div>
+                <h2 className="mt-5 text-2xl font-black text-slate-950">Entrar na sala</h2>
+                <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">
+                  Digite o código da sala. Só dá para entrar enquanto ela ainda estiver no lobby.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={openOnlineMatchmaking}
+                className="rounded-[1.75rem] border border-slate-900/10 bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:border-emerald-400/50"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                  <Shuffle size={22} />
+                </div>
+                <h2 className="mt-5 text-2xl font-black text-slate-950">Buscar partida</h2>
+                <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">
+                  Escolha X1, Brasileirão Online e tipo de draft para procurar adversários aleatórios.
+                </p>
+              </button>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-emerald-300/40 bg-emerald-50 px-4 py-3 text-xs font-bold leading-relaxed text-emerald-900">
+              Criar sala, entrar por código e ver salas abertas já funcionam entre aparelhos diferentes.
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-join") {
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-3xl px-6 py-10">
+          <button
+            onClick={() => setScreen("online-home")}
+            className="mb-8 inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+          >
+            <ArrowLeft size={18} />
+            Voltar ao online
+          </button>
+
+          <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:p-8">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+              Entrar na sala
+            </p>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+              Código da sala
+            </h1>
+            <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
+              Digite o código da sala e configure seu time. A entrada só é permitida enquanto a sala estiver no lobby.
+            </p>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Código da sala
+                </span>
+                <input
+                  value={joinRoomCode}
+                  onChange={(event) => {
+                    setJoinRoomCode(event.target.value.toUpperCase());
+                    setJoinRoomFeedback("");
+                  }}
+                  placeholder="Ex: A7K9Q"
+                  className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-4 text-center text-2xl font-black uppercase tracking-[0.3em] text-slate-950 outline-none focus:border-emerald-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Seu nome
+                </span>
+                <input
+                  value={onlineSetup.playerName}
+                  onChange={(event) => updateOnlineSetup("playerName", event.target.value)}
+                  placeholder="Vinicius"
+                  className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Nome do seu time
+                </span>
+                <input
+                  value={onlineSetup.teamName}
+                  onChange={(event) => updateOnlineSetup("teamName", event.target.value)}
+                  placeholder="Vini FC"
+                  className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400"
+                />
+              </label>
+
+              <label className="block sm:col-span-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Formação
+                </span>
+                <select
+                  value={onlineSetup.formationId}
+                  onChange={(event) => updateOnlineSetup("formationId", event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400"
+                >
+                  {formations.map((formation) => (
+                    <option key={`join-formation-${formation.id}`} value={formation.id}>
+                      {formation.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {joinRoomFeedback && (
+              <div className="mt-4 rounded-2xl border border-yellow-300/60 bg-yellow-100 px-4 py-3 text-sm font-black text-yellow-950">
+                {joinRoomFeedback}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={tryJoinOnlineRoom}
+              disabled={isJoiningOnlineRoom}
+              className="force-dark-text mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 text-sm font-black uppercase tracking-[0.14em] text-emerald-950 transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isJoiningOnlineRoom ? "Entrando..." : "Entrar"}
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-matchmaking") {
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-5xl px-6 py-10">
+          <button
+            onClick={() => setScreen("online-home")}
+            className="mb-8 inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+          >
+            <ArrowLeft size={18} />
+            Voltar ao online
+          </button>
+
+          <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:p-8">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+              Salas abertas
+            </p>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+              Encontrar partida
+            </h1>
+            <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
+              Veja as salas no lobby com vagas e entre direto. É mais prático que matchmaking aleatório quando a comunidade ainda está crescendo.
+            </p>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Seu nome
+                </span>
+                <input
+                  value={onlineSetup.playerName}
+                  onChange={(event) => updateOnlineSetup("playerName", event.target.value)}
+                  placeholder="Vinicius"
+                  className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Nome do seu time
+                </span>
+                <input
+                  value={onlineSetup.teamName}
+                  onChange={(event) => updateOnlineSetup("teamName", event.target.value)}
+                  placeholder="Meu XI"
+                  className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => updateMatchmakingSetup("onlineMode", "duel")}
+                className={`rounded-[1.75rem] border p-5 text-left transition hover:-translate-y-1 ${
+                  matchmakingSetup.onlineMode === "duel"
+                    ? "force-dark-text border-emerald-400 bg-emerald-300 text-emerald-950 shadow-[0_16px_35px_rgba(16,185,129,0.18)]"
+                    : "border-slate-900/10 bg-white text-slate-950"
+                }`}
+              >
+                <h2 className="text-2xl font-black">Duelo 1v1</h2>
+                <p className="mt-2 text-sm font-bold leading-relaxed opacity-80">
+                  Mostrar salas de X1 com vaga.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => updateMatchmakingSetup("onlineMode", "league")}
+                className={`rounded-[1.75rem] border p-5 text-left transition hover:-translate-y-1 ${
+                  matchmakingSetup.onlineMode === "league"
+                    ? "force-dark-text border-emerald-400 bg-emerald-300 text-emerald-950 shadow-[0_16px_35px_rgba(16,185,129,0.18)]"
+                    : "border-slate-900/10 bg-white text-slate-950"
+                }`}
+              >
+                <h2 className="text-2xl font-black">Brasileirão Online</h2>
+                <p className="mt-2 text-sm font-bold leading-relaxed opacity-80">
+                  Mostrar salas de Brasileirão no lobby.
+                </p>
+              </button>
+            </div>
+
+            {matchmakingSetup.onlineMode === "league" && (
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => updateMatchmakingSetup("difficulty", "normal")}
+                  className={`rounded-2xl border px-4 py-3 text-sm font-black ${
+                    matchmakingSetup.difficulty === "normal"
+                      ? "force-dark-text border-emerald-400 bg-emerald-300 text-emerald-950"
+                      : "border-slate-900/10 bg-white text-slate-950"
+                  }`}
+                >
+                  Normal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateMatchmakingSetup("difficulty", "expert")}
+                  className={`rounded-2xl border px-4 py-3 text-sm font-black ${
+                    matchmakingSetup.difficulty === "expert"
+                      ? "force-dark-text border-emerald-400 bg-emerald-300 text-emerald-950"
+                      : "border-slate-900/10 bg-white text-slate-950"
+                  }`}
+                >
+                  Especialista
+                </button>
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-bold text-slate-600">
+                {isLoadingLobbyRooms
+                  ? "Carregando salas..."
+                  : `${lobbyRooms.length} sala(s) aberta(s) com vaga`}
+              </p>
+              <button
+                type="button"
+                onClick={() => refreshLobbyRooms().catch(console.error)}
+                disabled={isLoadingLobbyRooms}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white px-4 py-2 text-sm font-black text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                <RefreshCw size={16} />
+                Atualizar
+              </button>
+            </div>
+
+            {lobbyRoomsFeedback ? (
+              <p className="mt-4 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+                {lobbyRoomsFeedback}
+              </p>
+            ) : null}
+
+            <div className="mt-4 grid gap-3">
+              {lobbyRooms.length ? (
+                lobbyRooms.map((room) => {
+                  const playerCount = room.participants?.length || 0;
+                  const modeLabel = room.config?.onlineMode === "duel" ? "Duelo 1v1" : "Brasileirão";
+                  const difficultyLabel =
+                    room.config?.onlineMode === "league"
+                      ? room.config?.difficulty === "expert"
+                        ? "Especialista"
+                        : "Normal"
+                      : null;
+
+                  return (
+                    <div
+                      key={room.code}
+                      className="flex flex-col gap-4 rounded-[1.5rem] border border-slate-900/10 bg-white/80 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="text-lg font-black text-slate-950">{room.roomName || "Sala 38–0"}</p>
+                        <p className="mt-1 text-sm font-bold text-slate-600">
+                          {modeLabel}
+                          {difficultyLabel ? ` · ${difficultyLabel}` : ""} · Código {room.code}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white">
+                          {playerCount} {playerCount === 1 ? "jogador" : "jogadores"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => joinLobbyRoom(room.code).catch(console.error)}
+                          disabled={joiningLobbyRoomCode === room.code}
+                          className="force-dark-text rounded-2xl bg-emerald-300 px-4 py-2 text-sm font-black text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
+                        >
+                          {joiningLobbyRoomCode === room.code ? "Entrando..." : "Entrar"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-[1.5rem] border border-dashed border-slate-900/15 bg-white/70 px-5 py-8 text-center">
+                  <p className="text-sm font-bold text-slate-600">
+                    Nenhuma sala aberta com vaga agora. Crie uma sala e compartilhe o código, ou atualize daqui a pouco.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openOnlineSetup}
+                    className="force-dark-text mt-4 rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-200"
+                  >
+                    Criar sala
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-setup") {
+    const selectedOnlineFormation = getFormationById(onlineSetup.formationId);
+    const isCardsDraft = onlineSetup.draftType === "cards";
+
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-6xl px-6 py-10">
+          <button
+            onClick={goHome}
+            className="mb-8 inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+          >
+            <ArrowLeft size={18} />
+            Voltar
+          </button>
+
+          <div className="mb-8">
+            <div className="force-dark-text mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-950">
+              <Users size={18} />
+              Modo Online
+            </div>
+
+            <h1 className="text-4xl font-black tracking-tight md:text-6xl">
+              Criar sala
+            </h1>
+            <p className="mt-4 max-w-3xl text-lg leading-relaxed text-slate-700">
+              Configure a sala, escolha seu time e compartilhe o código com seus amigos para jogarem juntos em tempo real.
+            </p>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)] sm:p-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Nome da sala
+                  </span>
+                  <input
+                    value={onlineSetup.roomName}
+                    onChange={(event) => updateOnlineSetup("roomName", event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none transition focus:border-emerald-500"
+                    placeholder="Sala 38–0"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Seu nome
+                  </span>
+                  <input
+                    value={onlineSetup.playerName}
+                    onChange={(event) => updateOnlineSetup("playerName", event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none transition focus:border-emerald-500"
+                    placeholder="Vinicius"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Nome do seu time
+                  </span>
+                  <input
+                    value={onlineSetup.teamName}
+                    onChange={(event) => updateOnlineSetup("teamName", event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none transition focus:border-emerald-500"
+                    placeholder="Vini FC"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Formação
+                  </span>
+                  <select
+                    value={onlineSetup.formationId}
+                    onChange={(event) => updateOnlineSetup("formationId", event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none transition focus:border-emerald-500"
+                  >
+                    {formations.map((formation) => (
+                      <option key={formation.id} value={formation.id}>
+                        {formation.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="rounded-3xl border border-slate-900/10 bg-white/70 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Tipo de sala
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {[
+                      ["league", "Brasileirão Online", "Liga com vários jogadores. A sala cresce conforme as pessoas entram."],
+                      ["duel", "Duelo 1v1", "Dois times montados no draft e confronto direto."],
+                    ].map(([value, title, description]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          setOnlineSetup((currentSetup) => ({
+                            ...currentSetup,
+                            onlineMode: value,
+                          }))
+                        }
+                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                          onlineSetup.onlineMode === value
+                            ? "border-emerald-500 bg-emerald-300/25"
+                            : "border-slate-900/10 bg-white/60 hover:bg-white"
+                        }`}
+                      >
+                        <p className="font-black text-slate-950">{title}</p>
+                        <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500">
+                          {description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-slate-900/10 bg-white/70 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Tipo de draft
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {[
+                      ["cards", "Cards Aleatórios", "Aparecem jogadores sortidos da base inteira."],
+                      ["teams", "Elencos Históricos", "Sorteia um clube/ano e você escolhe do elenco."],
+                    ].map(([value, title, description]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => updateOnlineSetup("draftType", value)}
+                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                          onlineSetup.draftType === value
+                            ? "border-emerald-500 bg-emerald-300/25"
+                            : "border-slate-900/10 bg-white/60 hover:bg-white"
+                        }`}
+                      >
+                        <p className="font-black text-slate-950">{title}</p>
+                        <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500">
+                          {description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-3xl border border-slate-900/10 bg-white/70 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Configurações do draft
+                </p>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <label className="block">
+                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      Dificuldade
+                    </span>
+                    <select
+                      value={onlineSetup.difficulty}
+                      onChange={(event) => updateOnlineSetup("difficulty", event.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none"
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="expert">Especialista</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      Tempo por escolha
+                    </span>
+                    <select
+                      value={onlineSetup.pickTime}
+                      onChange={(event) => updateOnlineSetup("pickTime", event.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none"
+                    >
+                      <option value="15">15s</option>
+                      <option value="30">30s</option>
+                      <option value="60">60s</option>
+                      <option value="none">Sem tempo</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      Escolhas por turno
+                    </span>
+                    <select
+                      value={onlineSetup.picksPerTurn}
+                      onChange={(event) => updateOnlineSetup("picksPerTurn", Number(event.target.value))}
+                      className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none"
+                    >
+                      <option value={1}>1 escolha</option>
+                      <option value={2}>2 escolhas</option>
+                      {isCardsDraft && <option value={3}>3 escolhas</option>}
+                    </select>
+                  </label>
+                </div>
+
+                {isCardsDraft && (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <label className="block">
+                      <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                        Cards por turno
+                      </span>
+                      <select
+                        value={onlineSetup.cardsPerTurn}
+                        onChange={(event) => updateOnlineSetup("cardsPerTurn", Number(event.target.value))}
+                        className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none"
+                      >
+                        <option value={8}>8 cards</option>
+                        <option value={10}>10 cards</option>
+                        <option value={12}>12 cards</option>
+                      </select>
+                    </label>
+
+                    <div className="rounded-2xl bg-emerald-300/15 p-4">
+                      <p className="text-sm font-black text-emerald-800">
+                        Sorteio realmente aleatório
+                      </p>
+                      <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">
+                        Os cards vêm misturados da base: craques, médios e nomes mais fracos.
+                        Quem for escolhido sai da pool da sala.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+
+
+              {onlineSetup.onlineMode === "duel" && (
+                <div className="mt-6 rounded-3xl border border-slate-900/10 bg-white/70 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Formato do Duelo 1v1
+                  </p>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {ONLINE_DUEL_FORMAT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => updateOnlineSetup("duelFormat", option.value)}
+                        className={`rounded-2xl border px-4 py-3 text-left transition ${
+                          onlineSetup.duelFormat === option.value
+                            ? "border-emerald-500 bg-emerald-300/25"
+                            : "border-slate-900/10 bg-white/60 hover:bg-white"
+                        }`}
+                      >
+                        <p className="font-black text-slate-950">{option.label}</p>
+                        <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500">
+                          {option.description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-3">
+                      <span>
+                        <span className="block text-sm font-black text-slate-950">Prorrogação</span>
+                        <span className="block text-xs font-bold text-slate-500">Só no ida e volta, se o agregado empatar após o 2º jogo.</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={onlineSetup.duelExtraTime}
+                        disabled={!duelFormatAllowsExtraTime(onlineSetup.duelFormat)}
+                        onChange={(event) => updateOnlineSetup("duelExtraTime", event.target.checked)}
+                        className="h-5 w-5 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-3">
+                      <span>
+                        <span className="block text-sm font-black text-slate-950">Pênaltis</span>
+                        <span className="block text-xs font-bold text-slate-500">Decide empates. Obrigatório em melhor de 3/5 e quando há prorrogação.</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={onlineSetup.duelPenalties}
+                        disabled={onlineSetup.duelExtraTime || duelFormatRequiresPenalties(onlineSetup.duelFormat)}
+                        onChange={(event) => updateOnlineSetup("duelPenalties", event.target.checked)}
+                        className="h-5 w-5 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={createOnlineRoom}
+                disabled={isCreatingOnlineRoom}
+                className="force-dark-text mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Users size={20} />
+                {isCreatingOnlineRoom ? "Criando sala..." : "Criar sala"}
+              </button>
+            </div>
+
+            <aside className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)] sm:p-6">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
+                Prévia
+              </p>
+              <h2 className="mt-2 text-3xl font-black tracking-tight">
+                {onlineSetup.teamName || "Meu XI"}
+              </h2>
+              <p className="mt-1 text-sm font-bold text-slate-500">
+                {selectedOnlineFormation?.name || "Formação"} · {getOnlineModeLabel(onlineSetup.onlineMode)}
+              </p>
+
+              {selectedOnlineFormation && <FormationMiniPreview formation={selectedOnlineFormation} />}
+
+              <div className="mt-5 space-y-2 text-sm font-bold text-slate-600">
+                <p>Draft: {getDraftTypeLabel(onlineSetup.draftType)}</p>
+                <p>Dificuldade: {getDifficultyLabel(onlineSetup.difficulty)}</p>
+                <p>Tempo: {getPickTimeLabel(onlineSetup.pickTime)}</p>
+                <p>Escolhas por turno: {onlineSetup.picksPerTurn}</p>
+                {isCardsDraft && <p>Cards por turno: {onlineSetup.cardsPerTurn}</p>}
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-lobby" && onlineRoom) {
+    const canStartRoom = onlineRoom.participants.length >= 2 && isOnlineHost;
+
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-6xl px-6 py-10">
+          <button
+            onClick={() => setScreen("online-setup")}
+            className="mb-8 inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+          >
+            <ArrowLeft size={18} />
+            Voltar
+          </button>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-6 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-700">
+                    Lobby de espera
+                  </p>
+                  <h1 className="mt-2 text-4xl font-black tracking-tight md:text-5xl">
+                    {onlineRoom.roomName}
+                  </h1>
+                  <p className="mt-2 text-sm font-bold text-slate-500">
+                    {isOnlineHost
+                      ? "Compartilhe o código. Quando todos entrarem, você inicia a sala."
+                      : "Aguardando o ADM iniciar. Novos jogadores entram pelo mesmo código."}
+                  </p>
+                  {justBecameHost && (
+                    <p className="mt-1 text-xs font-black text-emerald-600">
+                      Você agora é o ADM da sala (o anterior saiu).
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-3xl bg-slate-950 px-5 py-4 text-center text-white">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+                    Código
+                  </p>
+                  <p className="mt-1 text-3xl font-black tracking-[0.18em]">
+                    {onlineRoom.code}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3">
+                {onlineRoom.participants.map((participant, index) => (
+                  <div
+                    key={participant.id}
+                    className="flex flex-col gap-3 rounded-3xl border border-slate-900/10 bg-white/75 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="text-lg font-black">
+                        {index + 1}. {participant.teamName}
+                        {participant.isHost && (
+                          <span className="ml-2 rounded-full bg-emerald-300 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-950">
+                            ADM
+                          </span>
+                        )}
+                        {participant.id === localParticipantId && (
+                          <span className="ml-2 rounded-full bg-slate-900 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+                            Você
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        {participant.playerName} · {participant.formationName}
+                      </p>
+                    </div>
+
+                    <span className="force-dark-text inline-flex w-fit items-center gap-2 rounded-full bg-emerald-300 px-3 py-1 text-xs font-black text-emerald-950">
+                      <Check size={14} />
+                      Pronto
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {isOnlineHost ? (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={startOnlineOrderScreen}
+                    disabled={onlineRoom.participants.length < 2}
+                    className="force-dark-text inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Play size={20} fill="currentColor" />
+                    Iniciar sala
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-6 rounded-2xl border border-slate-900/10 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-600">
+                  Você entrou como {localOnlineParticipant?.teamName || "convidado"}. Aguarde o ADM iniciar.
+                </div>
+              )}
+
+              {isOnlineHost && onlineRoom.participants.length < 2 && (
+                <p className="mt-3 text-sm font-bold text-slate-500">
+                  A sala precisa de pelo menos 2 participantes para iniciar. Compartilhe o código {onlineRoom.code}.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={exitOnlineRoom}
+                className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                <X size={16} />
+                Sair da sala
+              </button>
+            </div>
+
+            <aside className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
+                Configurações da sala
+              </p>
+              <p className="mt-2 text-xs font-bold leading-relaxed text-slate-500">
+                {isOnlineHost
+                  ? "Você pode ajustar antes de iniciar outro draft. O modo da sala permanece o mesmo."
+                  : "Somente o ADM pode alterar as configurações da sala."}
+              </p>
+
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                    Draft
+                  </label>
+                  <select
+                    value={onlineRoom.config.draftType}
+                    disabled={!isOnlineHost}
+                    onChange={(event) => updateOnlineRoomConfig("draftType", event.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-3 text-sm font-black text-slate-950 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="cards">Cards Aleatórios</option>
+                    <option value="teams">Elencos Históricos</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                    Dificuldade
+                  </label>
+                  <select
+                    value={onlineRoom.config.difficulty}
+                    disabled={!isOnlineHost}
+                    onChange={(event) => updateOnlineRoomConfig("difficulty", event.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-3 text-sm font-black text-slate-950 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="expert">Especialista</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                    Tempo por escolha
+                  </label>
+                  <select
+                    value={onlineRoom.config.pickTime}
+                    disabled={!isOnlineHost}
+                    onChange={(event) => updateOnlineRoomConfig("pickTime", event.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-3 text-sm font-black text-slate-950 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="15">15s</option>
+                    <option value="30">30s</option>
+                    <option value="60">60s</option>
+                    <option value="none">Sem tempo</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                      Escolhas
+                    </label>
+                    <select
+                      value={onlineRoom.config.picksPerTurn}
+                      disabled={!isOnlineHost}
+                      onChange={(event) => updateOnlineRoomConfig("picksPerTurn", event.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-3 text-sm font-black text-slate-950 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {[1, 2, 3].map((value) => (
+                        <option key={`lobby-picks-${value}`} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {onlineRoom.config.draftType === "cards" && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                        Cards
+                      </label>
+                      <select
+                        value={onlineRoom.config.cardsPerTurn}
+                        disabled={!isOnlineHost}
+                        onChange={(event) => updateOnlineRoomConfig("cardsPerTurn", event.target.value)}
+                        className="mt-1 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-3 text-sm font-black text-slate-950 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {[8, 10, 12].map((value) => (
+                          <option key={`lobby-cards-${value}`} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {onlineRoom.config.onlineMode === "duel" && (
+                  <div className="rounded-2xl border border-slate-900/10 bg-white/70 p-3">
+                    <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                      Formato do X1
+                    </label>
+                    <select
+                      value={onlineRoom.config.duelFormat}
+                      disabled={!isOnlineHost}
+                      onChange={(event) => updateOnlineRoomConfig("duelFormat", event.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-3 text-sm font-black text-slate-950 outline-none focus:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {ONLINE_DUEL_FORMAT_OPTIONS.map((option) => (
+                        <option key={`lobby-duel-${option.value}`} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <label className="mt-3 flex items-start gap-3 rounded-2xl bg-white px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={onlineRoom.config.duelExtraTime}
+                        disabled={!isOnlineHost || !duelFormatAllowsExtraTime(onlineRoom.config.duelFormat)}
+                        onChange={(event) => updateOnlineRoomConfig("duelExtraTime", event.target.checked)}
+                        className="mt-0.5 h-5 w-5 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <span>
+                        <span className="block text-sm font-black text-slate-950">Prorrogação</span>
+                        <span className="block text-xs font-bold text-slate-500">Só no ida e volta com agregado empatado.</span>
+                      </span>
+                    </label>
+
+                    <label className="mt-2 flex items-start gap-3 rounded-2xl bg-white px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={onlineRoom.config.duelPenalties}
+                        disabled={
+                          !isOnlineHost ||
+                          onlineRoom.config.duelExtraTime ||
+                          duelFormatRequiresPenalties(onlineRoom.config.duelFormat)
+                        }
+                        onChange={(event) => updateOnlineRoomConfig("duelPenalties", event.target.checked)}
+                        className="mt-0.5 h-5 w-5 accent-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <span>
+                        <span className="block text-sm font-black text-slate-950">Pênaltis</span>
+                        <span className="block text-xs font-bold text-slate-500">Obrigatório em melhor de 3/5 e com prorrogação.</span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5 rounded-2xl bg-emerald-300/15 p-4">
+                <p className="text-sm font-black text-emerald-800">
+                  Próxima etapa
+                </p>
+                <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">
+                  Ao iniciar, a sala vai para o sorteio da ordem do draft. Depois o ADM avança para a tela do draft.
+                </p>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-order" && onlineRoom) {
+    const hasFullOrder = onlineDraftOrder.length === onlineRoom.participants.length;
+    const waitingParticipants = onlineRoom.participants.filter(
+      (participant) => !onlineDraftOrder.some((drafted) => drafted.id === participant.id)
+    );
+
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-6xl px-6 py-10">
+          {isOnlineHost ? (
+            <button
+              onClick={() => patchRoomDocument(onlineRoom.code, { status: "lobby" }).catch(console.error)}
+              disabled={isDrawingOnlineOrder}
+              className="mb-8 inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ArrowLeft size={18} />
+              Voltar ao lobby
+            </button>
+          ) : (
+            <div className="mb-8 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-600">
+              Sorteio em andamento na sala
+            </div>
+          )}
+
+          <div className="mb-6">{renderExitOnlineRoomButton()}</div>
+
+          <div className="rounded-[2.25rem] border border-slate-900/10 bg-white/85 p-6 text-center shadow-[0_18px_50px_rgba(15,23,42,0.10)] sm:p-8">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700">
+              Sorteio da ordem
+            </p>
+            <h1 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">
+              Ordem do draft
+            </h1>
+            <p className="mx-auto mt-3 max-w-2xl text-sm font-bold leading-relaxed text-slate-500">
+              O ADM inicia o sorteio. A ordem define o primeiro round e depois o draft segue em snake.
+            </p>
+
+            <div className="mx-auto mt-8 max-w-2xl rounded-[2rem] border border-slate-900/10 bg-slate-950 p-6 text-white">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+                {hasFullOrder ? "Sorteio finalizado" : isDrawingOnlineOrder ? "Sorteando agora" : "Pronto para sortear"}
+              </p>
+
+              <div className="mt-4 min-h-[88px] rounded-3xl bg-white/10 p-5">
+                {rollingOnlineParticipant ? (
+                  <>
+                    <p className="text-sm font-bold text-emerald-200">Escolhendo posição...</p>
+                    <p className="mt-2 animate-pulse text-3xl font-black tracking-tight">
+                      {rollingOnlineParticipant}
+                    </p>
+                  </>
+                ) : hasFullOrder ? (
+                  <>
+                    <p className="text-sm font-bold text-emerald-200">Ordem completa</p>
+                    <p className="mt-2 text-3xl font-black tracking-tight">
+                      {onlineDraftOrder[0]?.teamName} abre o draft
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-bold text-slate-300">Aguardando ADM</p>
+                    <p className="mt-2 text-3xl font-black tracking-tight">
+                      {onlineDraftOrder.length + 1}º pick
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+              <div className="rounded-[2rem] border border-slate-900/10 bg-white/75 p-5 text-left">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                  Ordem definida
+                </p>
+
+                <div className="mt-4 grid gap-2">
+                  {onlineDraftOrder.length ? (
+                    onlineDraftOrder.map((participant, index) => (
+                      <div
+                        key={participant.id}
+                        className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3"
+                      >
+                        <p className="font-black">
+                          {index + 1}º {participant.teamName}
+                        </p>
+                        <p className="text-xs font-bold text-slate-500">
+                          {participant.formationName}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
+                      Nenhum pick sorteado ainda.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-slate-900/10 bg-white/75 p-5 text-left">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Ainda faltam
+                </p>
+
+                <div className="mt-4 grid gap-2">
+                  {waitingParticipants.length ? (
+                    waitingParticipants.map((participant) => (
+                      <div
+                        key={participant.id}
+                        className="rounded-2xl bg-white/80 px-4 py-3 text-sm font-black"
+                      >
+                        {participant.teamName}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
+                      Todos já foram sorteados.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {isOnlineHost ? (
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={startOnlineOrderDraw}
+                  disabled={isDrawingOnlineOrder || hasFullOrder}
+                  className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Shuffle size={20} />
+                  Iniciar sorteio
+                </button>
+
+                <button
+                  type="button"
+                  onClick={goToOnlineDraftPreview}
+                  disabled={!hasFullOrder || isDrawingOnlineOrder}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/80 px-6 py-4 font-black text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Play size={20} />
+                  Ir para o draft
+                </button>
+              </div>
+            ) : (
+              <p className="mt-8 text-sm font-bold text-slate-500">
+                Aguardando o ADM sortear a ordem e iniciar o draft.
+              </p>
+            )}
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-draft" && onlineRoom && onlineDraftState) {
+    const currentParticipant = getOnlineCurrentParticipant(
+      onlineDraftOrder,
+      onlineDraftState.currentTurnIndex
+    );
+    const currentLineup = currentParticipant
+      ? onlineDraftState.lineupsMap[currentParticipant.id] || []
+      : [];
+    const currentFormation = currentParticipant
+      ? getFormationById(currentParticipant.formationId)
+      : formations[0];
+    const openSlotsForCurrent = currentParticipant
+      ? getOnlineOpenSlots(currentParticipant, onlineDraftState.lineupsMap)
+      : [];
+    const picksNeededThisTurn = currentParticipant
+      ? getOnlinePicksNeededThisTurn(
+          currentParticipant,
+          onlineDraftState.lineupsMap,
+          onlineRoom.config.picksPerTurn
+        )
+      : 0;
+    const remainingPicksThisTurn = Math.max(
+      0,
+      picksNeededThisTurn - onlineDraftState.picksMadeThisTurn
+    );
+    const roundIndex = Math.floor(onlineDraftState.currentTurnIndex / onlineDraftOrder.length) + 1;
+    const revealOnlineOveralls = onlineRoom.config.difficulty !== "expert";
+    const isOnlineTeamDraft = onlineRoom.config.draftType === "teams";
+    const currentTeamOption = onlineDraftState.currentTeamOption;
+    const currentLineupSummary = getOnlineLineupSummary(currentLineup, currentFormation);
+    const isMyOnlineDraftTurn = currentParticipant?.id === localParticipantId;
+
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-[1480px] px-4 py-5 sm:px-6 sm:py-8">
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            {isOnlineHost ? (
+              <button
+                onClick={() => patchRoomDocument(onlineRoom.code, { status: "order" }).catch(console.error)}
+                className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+              >
+                <ArrowLeft size={18} />
+                Voltar ao sorteio
+              </button>
+            ) : (
+              <div className="inline-flex w-fit rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-600">
+                Draft sincronizado
+              </div>
+            )}
+
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+              <div className="rounded-2xl border border-slate-900/10 bg-white/75 px-4 py-2 text-sm font-black text-slate-700">
+                {onlineRoom.roomName} · {onlineRoom.code}
+              </div>
+              {renderExitOnlineRoomButton()}
+            </div>
+          </div>
+
+          {onlineDraftState.isComplete ? (
+            <div className="rounded-[2.25rem] border border-slate-900/10 bg-white/85 p-6 text-center shadow-[0_18px_50px_rgba(15,23,42,0.10)] sm:p-8">
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-700">
+                Draft finalizado
+              </p>
+              <h1 className="mt-3 text-4xl font-black tracking-tight md:text-6xl">
+                Todos os times foram montados
+              </h1>
+              <p className="mx-auto mt-3 max-w-2xl text-sm font-bold leading-relaxed text-slate-500">
+                Os elencos estão prontos. {isOnlineHost ? "Inicie a partida quando todos estiverem vendo os times." : "Aguarde o ADM iniciar a partida."}
+              </p>
+
+              {isOnlineHost && onlineRoom.config.onlineMode === "league" ? (
+                <div className="mx-auto mt-6 max-w-xl space-y-4">
+                  <OnlineLiveSpeedControl
+                    value={onlineLiveSpeed}
+                    onChange={updateOnlineLiveSpeed}
+                  />
+                  <button
+                    type="button"
+                    onClick={startOnlineBrazilianLeague}
+                    disabled={isStartingOnlineLeague}
+                    className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-3 text-sm font-black uppercase tracking-[0.14em] text-emerald-950 shadow-[0_14px_30px_rgba(16,185,129,0.22)] transition hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <Play size={18} />
+                    {isStartingOnlineLeague ? "Iniciando..." : "Iniciar Brasileirão Online"}
+                  </button>
+                </div>
+              ) : isOnlineHost ? (
+                <div className="mx-auto mt-6 max-w-xl space-y-4">
+                  <OnlineLiveSpeedControl
+                    value={onlineLiveSpeed}
+                    onChange={updateOnlineLiveSpeed}
+                  />
+                  <button
+                    type="button"
+                    onClick={startOnlineDuel}
+                    className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-yellow-300 px-6 py-3 text-sm font-black uppercase tracking-[0.14em] text-yellow-950 shadow-[0_14px_30px_rgba(234,179,8,0.22)] transition hover:scale-[1.02]"
+                  >
+                    <Play size={18} />
+                    Iniciar Duelo 1v1
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {onlineDraftOrder.map((participant) => {
+                  const participantLineup = onlineDraftState.lineupsMap[participant.id] || [];
+                  const participantFormation = getFormationById(participant.formationId);
+                  const participantSummary = getOnlineLineupSummary(
+                    participantLineup,
+                    participantFormation
+                  );
+
+                  return (
+                    <div
+                      key={participant.id}
+                      className="rounded-3xl border border-slate-900/10 bg-white/75 p-5 text-left"
+                    >
+                      <p className="text-lg font-black">{participant.teamName}</p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        {participant.formationName} · {participantSummary.filled}/{participantSummary.total} jogadores
+                      </p>
+
+                      <div className="mt-4 rounded-3xl border border-slate-900/10 bg-white/70 p-3">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                            Resumo do time
+                          </p>
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+                            participantSummary.isComplete
+                              ? "selected-green-card online-speed-option-active bg-emerald-300 text-emerald-950"
+                              : "bg-slate-100 text-slate-500"
+                          }`}>
+                            {participantSummary.isComplete ? "Completo" : "Parcial"}
+                          </span>
+                        </div>
+                        <OnlineTeamSummaryStats
+                          summary={participantSummary}
+                          revealValues={revealOnlineOveralls}
+                        />
+                      </div>
+
+                      <div className="mt-4 grid gap-2">
+                        {participantLineup
+                          .slice()
+                          .sort((a, b) => a.slotIndex - b.slotIndex)
+                          .map((item) => (
+                            <div
+                              key={`${participant.id}-${item.slotIndex}`}
+                              className="flex items-center gap-3 rounded-2xl bg-white/80 px-3 py-2"
+                            >
+                              <KitBallIcon
+                                clubId={item.team.clubId}
+                                overall={revealOnlineOveralls ? item.player.ovr : "?"}
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black">{item.player.name}</p>
+                                <p className="truncate text-[11px] font-bold text-slate-500">
+                                  {item.slotPosition} · {item.team.label}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-5 xl:grid-cols-[190px_minmax(0,1fr)_230px] 2xl:grid-cols-[210px_minmax(0,1fr)_250px] xl:items-start">
+              <aside className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.08)] xl:sticky xl:top-5">
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+                  Draft online
+                </p>
+                <h1 className="mt-3 text-3xl font-black tracking-tight">
+                  Round {roundIndex}
+                </h1>
+
+                <div className="mt-5 rounded-3xl bg-slate-950 p-4 text-white">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">
+                    Vez de escolher
+                  </p>
+                  <p className="mt-2 text-2xl font-black leading-tight">
+                    {currentParticipant?.teamName}
+                  </p>
+                  <p className="mt-2 text-xs font-bold text-slate-300">
+                    Escolha {onlineDraftState.picksMadeThisTurn + 1}/{picksNeededThisTurn} do turno
+                  </p>
+
+                  <div className="mt-4 rounded-2xl bg-white/10 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">
+                      Tempo
+                    </p>
+                    <p className="mt-1 text-3xl font-black text-emerald-200">
+                      {onlineRoom.config.pickTime === "none"
+                        ? "Sem tempo"
+                        : isMyOnlineDraftTurn
+                          ? `${onlinePickCountdown ?? onlineRoom.config.pickTime}s`
+                          : "—"}
+                    </p>
+                  </div>
+                </div>
+
+                {!isMyOnlineDraftTurn && (
+                  <p className="mt-4 rounded-2xl border border-slate-900/10 bg-slate-50 px-4 py-3 text-xs font-bold leading-relaxed text-slate-600">
+                    Aguarde sua vez. As escolhas aparecem aqui em tempo real para todos.
+                  </p>
+                )}
+
+                <div className="mt-4 rounded-3xl border border-slate-900/10 bg-white/75 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Regras da sala
+                  </p>
+                  <div className="mt-3 grid gap-1 text-sm font-bold text-slate-600">
+                    <p>{getOnlineModeLabel(onlineRoom.config.onlineMode)}</p>
+                    <p>{getDraftTypeLabel(onlineRoom.config.draftType)}</p>
+                    <p>{getDifficultyLabel(onlineRoom.config.difficulty)}</p>
+                    {isOnlineTeamDraft ? (
+                      <p>1 elenco sorteado por turno</p>
+                    ) : (
+                      <p>{onlineRoom.config.cardsPerTurn} cards por turno</p>
+                    )}
+                    <p>{onlineRoom.config.picksPerTurn} escolha(s) por turno</p>
+                    <p>Auto-pick aleatório por posição vaga</p>
+                  </div>
+                </div>
+              </aside>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(380px,1fr)_minmax(380px,440px)] 2xl:grid-cols-[minmax(460px,1fr)_minmax(420px,480px)] xl:items-start">
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)] xl:order-2 xl:sticky xl:top-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+                        {isOnlineTeamDraft ? "Elenco sorteado" : "Cards disponíveis"}
+                      </p>
+                      <h2 className="mt-2 text-3xl font-black tracking-tight">
+                        Escolha {remainingPicksThisTurn || 1} jogador{remainingPicksThisTurn === 1 ? "" : "es"}
+                      </h2>
+                      {isOnlineTeamDraft && currentTeamOption && (
+                        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-3xl border border-slate-900/10 bg-white/75 p-3">
+                          <TeamKitIcon clubId={currentTeamOption.clubId} size="sm" />
+                          <div className="min-w-0">
+                            <p className="text-lg font-black leading-tight">{currentTeamOption.label}</p>
+                            <p className="text-xs font-bold text-slate-500">
+                              Escolha direto do elenco sorteado para este turno.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="rounded-2xl bg-emerald-300/20 px-4 py-2 text-xs font-black text-emerald-800">
+                      Overalls {revealOnlineOveralls ? "visíveis" : "ocultos"}
+                    </p>
+                  </div>
+
+                  <div
+                    className={
+                      isOnlineTeamDraft
+                        ? "mt-4 grid max-h-[430px] gap-1.5 overflow-y-auto pr-1 sm:max-h-[500px] xl:max-h-[calc(100vh-320px)]"
+                        : "mt-5 grid gap-3 sm:grid-cols-2"
+                    }
+                  >
+                    {onlineDraftState.currentCards.length ? (
+                      onlineDraftState.currentCards.map((card) => {
+                        const compatibleSlots = getOnlineCardCompatibleSlots(card, openSlotsForCurrent);
+                        const isAvailable = compatibleSlots.length > 0;
+                        const compatibleLabel = [...new Set(compatibleSlots.map((slot) => slot.position))].join(", ") || "nenhuma vaga";
+                        const isPendingCard = onlinePendingSelection?.card?.id === card.id;
+
+                        if (isOnlineTeamDraft) {
+                          return (
+                            <button
+                              key={card.id}
+                              type="button"
+                              onClick={() => handleOnlineCardClick(card)}
+                              disabled={!isMyOnlineDraftTurn || !isAvailable}
+                              className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 text-left transition ${
+                                isAvailable && isMyOnlineDraftTurn
+                                  ? isPendingCard
+                                  ? "border-yellow-300 bg-yellow-50 shadow-[0_0_24px_rgba(253,224,71,0.28)]"
+                                  : "border-slate-900/10 bg-white/95 hover:border-emerald-300 hover:bg-emerald-300 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+                                  : "cursor-not-allowed border-slate-900/5 bg-slate-100/70 opacity-50"
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black leading-tight text-slate-950 sm:text-[15px]">
+                                  {card.player.name}
+                                </p>
+                                <p className="mt-0.5 truncate text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                                  {card.team.club || card.team.label} · {card.player.positions.join("/")}
+                                </p>
+                                <p className="mt-1 truncate text-[10px] font-bold text-slate-500">
+                                  Encaixa em: {compatibleLabel}
+                                </p>
+                              </div>
+
+                              <div className="shrink-0 text-2xl font-black leading-none text-slate-950 sm:text-3xl">
+                                {revealOnlineOveralls ? card.player.ovr : "?"}
+                              </div>
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={card.id}
+                            type="button"
+                            onClick={() => handleOnlineCardClick(card)}
+                            disabled={!isMyOnlineDraftTurn || !isAvailable}
+                            className={`rounded-3xl border p-4 text-left transition ${
+                              isAvailable && isMyOnlineDraftTurn
+                                ? isPendingCard
+                                ? "border-yellow-300 bg-yellow-50 shadow-[0_0_24px_rgba(253,224,71,0.28)]"
+                                : "border-slate-900/10 bg-white/90 hover:-translate-y-0.5 hover:shadow-[0_16px_35px_rgba(15,23,42,0.12)]"
+                                : "cursor-not-allowed border-slate-900/5 bg-slate-100/70 opacity-50"
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <KitBallIcon
+                                clubId={card.team.clubId}
+                                overall={revealOnlineOveralls ? card.player.ovr : "?"}
+                              />
+                              <div className="min-w-0">
+                                <p className="break-words text-base font-black leading-tight">{card.player.name}</p>
+                                <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                                  {card.player.positions.join("/")}
+                                </p>
+                                <p className="mt-1 break-words text-xs font-bold leading-snug text-slate-500">
+                                  {card.team.label}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 rounded-2xl bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-500">
+                              Encaixa em: {compatibleLabel}
+                            </div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-3xl border border-slate-900/10 bg-white/75 p-5 text-sm font-bold text-slate-500 sm:col-span-2 lg:col-span-4">
+                        {isOnlineTeamDraft
+                          ? "Não há jogadores compatíveis neste elenco sorteado."
+                          : "Não há cards compatíveis para este turno."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)] xl:order-1 xl:sticky xl:top-5">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                        Campo atual
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black">{currentParticipant?.teamName}</h2>
+                    </div>
+                    <p className="rounded-2xl bg-white/80 px-3 py-2 text-xs font-black text-slate-600">
+                      {currentLineup.length}/{currentFormation.slots.length}
+                    </p>
+                  </div>
+
+                  <div className="mb-4 rounded-3xl border border-slate-900/10 bg-white/70 p-3">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                        Resumo {currentLineupSummary.isComplete ? "do time" : "parcial"}
+                      </p>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+                        currentLineupSummary.isComplete
+                          ? "selected-green-card online-speed-option-active bg-emerald-300 text-emerald-950"
+                          : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {currentLineupSummary.filled}/{currentLineupSummary.total}
+                      </span>
+                    </div>
+                    <OnlineTeamSummaryStats
+                      summary={currentLineupSummary}
+                      revealValues={revealOnlineOveralls}
+                      compact
+                    />
+                  </div>
+
+                  <TacticalPitch
+                    formation={currentFormation}
+                    lineup={currentLineup}
+                    pendingSelection={onlinePendingSelection}
+                    onHighlightedSlotClick={handleOnlinePendingSlotClick}
+                    revealOveralls={revealOnlineOveralls}
+                  />
+                </div>
+              </div>
+
+              <aside className="space-y-4 xl:sticky xl:top-5">
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                    Ordem snake
+                  </p>
+                  <div className="mt-4 grid gap-2">
+                    {onlineDraftOrder.map((participant, index) => {
+                      const isCurrent = participant.id === currentParticipant?.id;
+                      const participantLineup = onlineDraftState.lineupsMap[participant.id] || [];
+                      const formation = getFormationById(participant.formationId);
+                      const participantSummary = getOnlineLineupSummary(participantLineup, formation);
+
+                      return (
+                        <div
+                          key={participant.id}
+                          className={`rounded-2xl px-4 py-3 ${
+                            isCurrent ? "selected-green-card online-speed-option-active bg-emerald-300 text-emerald-950" : "bg-white/80"
+                          }`}
+                        >
+                          <p className="text-sm font-black">
+                            {index + 1}º {participant.teamName}
+                          </p>
+                          <p className="mt-1 text-[11px] font-bold opacity-75">
+                            {participantLineup.length}/{formation.slots.length} jogadores
+                          </p>
+                          {participantLineup.length > 0 && (
+                            <p className="mt-2 text-[10px] font-black opacity-75">
+                              DEF {revealOnlineOveralls ? participantSummary.defense ?? "—" : "?"} · MEI {revealOnlineOveralls ? participantSummary.midfield ?? "—" : "?"} · ATA {revealOnlineOveralls ? participantSummary.attack ?? "—" : "?"} · GER {revealOnlineOveralls ? participantSummary.overall ?? "—" : "?"}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Últimas escolhas
+                  </p>
+                  <div className="mt-4 grid gap-2">
+                    {onlineDraftState.log.length ? (
+                      onlineDraftState.log.map((item) => (
+                        <div key={item.id} className="rounded-2xl bg-white/80 px-4 py-3">
+                          <p className="text-sm font-black">{item.participant}</p>
+                          <p className="mt-1 text-xs font-bold text-slate-500">
+                            {item.source === "auto" ? "Auto-pick" : "Escolheu"}: {item.player}
+                          </p>
+                          <p className="mt-0.5 text-[11px] font-bold text-slate-400">
+                            {item.team}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
+                        Nenhuma escolha ainda.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </aside>
+            </div>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+
+
+  if (screen === "online-duel" && onlineRoom && onlineDuelResult) {
+    const duelMatchIndex = onlineDuelLive?.matchIndex || 0;
+    const duelMatch = onlineDuelLive?.match || onlineDuelResult.matches?.[duelMatchIndex] || onlineDuelResult.match;
+    const duelMinute = onlineDuelLive?.minute ?? 90;
+    const duelScore = getLiveMatchScore(duelMatch, duelMinute);
+    const duelEvents = getRecentLiveEvents(duelMatch, duelMinute, 6);
+    const duelEndMinute = getDuelLiveEndMinute(duelMatch);
+    const isDuelFinished = Boolean(onlineDuelLive?.isFinished || duelMinute >= duelEndMinute);
+    const seriesSummary = getOnlineDuelLiveSeriesSummary(
+      onlineDuelResult,
+      duelMatchIndex,
+      duelScore,
+      duelMinute,
+      isDuelFinished
+    );
+    const finalSeriesSummary = isDuelFinished
+      ? getOnlineDuelSeriesSummary(onlineDuelResult)
+      : seriesSummary;
+    const hasNextDuelMatch = isDuelFinished && duelMatchIndex < (onlineDuelResult.matches?.length || 1) - 1;
+    const isDuelSeriesFinished = isDuelFinished && !hasNextDuelMatch;
+    const winnerLabel = isDuelSeriesFinished
+      ? finalSeriesSummary.winnerLabel || "Empate"
+      : duelScore.homeGoals > duelScore.awayGoals
+      ? duelMatch.home
+      : duelScore.awayGoals > duelScore.homeGoals
+      ? duelMatch.away
+      : "Empate";
+
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        <section className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <button
+              onClick={() => setScreen("online-draft")}
+              className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+            >
+              <ArrowLeft size={18} />
+              Voltar aos times
+            </button>
+
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+              <div className="rounded-2xl border border-slate-900/10 bg-white/75 px-4 py-2 text-sm font-black text-slate-700">
+                {onlineRoom.roomName} · {onlineDuelResult.formatLabel}
+              </div>
+              {renderExitOnlineRoomButton()}
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-6 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+                  Duelo 1v1 ao vivo
+                </p>
+                <h1 className="mt-2 text-4xl font-black tracking-tight md:text-5xl">
+                  {isDuelSeriesFinished ? "Duelo finalizado" : isDuelFinished ? `Fim do jogo ${duelMatchIndex + 1}` : getDuelLivePhaseLabel(duelMatch, duelMinute)}
+                </h1>
+                <p className="mt-2 text-sm font-bold text-slate-500">
+                  {onlineDuelResult.formatLabel} · Jogo {duelMatchIndex + 1}/{onlineDuelResult.matches.length} · {onlineDuelResult.hasExtraTime ? "com prorrogação" : "sem prorrogação"} · {onlineDuelResult.hasPenalties ? "com pênaltis" : "sem pênaltis"}
+                </p>
+              </div>
+
+              <div className="flex w-full flex-col gap-3 md:w-auto md:min-w-[360px]">
+                <OnlineLiveSpeedControl
+                  value={onlineLiveSpeed}
+                  onChange={updateOnlineLiveSpeed}
+                  compact
+                  disabled={!isOnlineHost}
+                />
+                {isOnlineHost ? (
+                  <>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={restartOnlineDuelLive}
+                        className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-emerald-950 transition hover:scale-[1.02]"
+                      >
+                        <Play size={18} />
+                        Rever série
+                      </button>
+                      <button
+                        type="button"
+                        onClick={revealFullOnlineDuel}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/85 px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-800 transition hover:bg-white"
+                      >
+                        <RefreshCw size={18} />
+                        Simular tudo
+                      </button>
+                      {isDuelSeriesFinished && (
+                        <button
+                          type="button"
+                          onClick={restartOnlineFromLobby}
+                          className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-yellow-300 px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-yellow-950 transition hover:scale-[1.02] sm:col-span-2"
+                        >
+                          <RefreshCw size={18} />
+                          Jogar de novo
+                        </button>
+                      )}
+                    </div>
+                    {hasNextDuelMatch && (
+                      <button
+                        type="button"
+                        onClick={startNextOnlineDuelMatch}
+                        className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-yellow-300 px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-yellow-950 transition hover:scale-[1.02]"
+                      >
+                        <Play size={18} />
+                        Iniciar próximo jogo
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-2xl border border-emerald-300/40 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900">
+                    {isDuelSeriesFinished
+                      ? "Duelo finalizado."
+                      : isDuelFinished
+                        ? "Aguardando o ADM iniciar o próximo jogo."
+                        : `Jogo ao vivo sincronizado · ${duelMinute}'`}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[1.5rem] border border-slate-900/10 bg-white/75 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                Times do duelo
+              </p>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
+                {(onlineDuelResult.teams || []).slice(0, 2).map((team, index) => (
+                  <div
+                    key={`duel-team-card-${team.id}`}
+                    className="rounded-2xl border border-slate-900/10 bg-white px-4 py-4 shadow-sm"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                      {index === 0 ? "Time 1" : "Time 2"}
+                    </p>
+                    <h2 className="mt-1 truncate text-2xl font-black text-slate-950">
+                      {team.label}
+                    </h2>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      Player: {team.playerName || "Jogador"} · Formação: {team.formationName || team.era || "—"}
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                      {[
+                        ["DEF", Math.round(team.sectors?.defense?.average || 0)],
+                        ["MEI", Math.round(team.sectors?.midfield?.average || 0)],
+                        ["ATA", Math.round(team.sectors?.attack?.average || 0)],
+                        ["GERAL", team.strength || "—"],
+                      ].map(([label, value]) => (
+                        <div
+                          key={`${team.id}-${label}`}
+                          className={`rounded-xl px-2 py-2 ${
+                            label === "GERAL"
+                              ? "force-dark-text bg-emerald-300 text-emerald-950"
+                              : "bg-slate-100 text-slate-950"
+                          }`}
+                        >
+                          <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">
+                            {label}
+                          </p>
+                          <p className="mt-1 text-sm font-black">{value || "—"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                <div className="hidden items-center justify-center md:flex">
+                  <div className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black uppercase tracking-[0.16em] text-white shadow-lg">
+                    VS
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 rounded-[1.5rem] border border-slate-900/10 bg-white/70 p-4 md:grid-cols-3">
+              <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Série</p>
+                <p className="mt-1 text-xl font-black text-slate-950">
+                  {onlineDuelResult.teams[0]?.label} {seriesSummary.homeWins} x {seriesSummary.awayWins} {onlineDuelResult.teams[1]?.label}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Agregado</p>
+                <p className="mt-1 text-xl font-black text-slate-950">
+                  {seriesSummary.homeAggregate} x {seriesSummary.awayAggregate}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Formato</p>
+                <p className="mt-1 text-xl font-black text-slate-950">{onlineDuelResult.formatLabel}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[1.5rem] bg-slate-950 p-5 text-white">
+              <p className="mb-4 text-center text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">Jogo atual · {duelMatch.home} x {duelMatch.away}</p>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <p className="truncate text-right text-lg font-black sm:text-3xl">{duelMatch.home}</p>
+                <p className="leader-row-readable rounded-2xl bg-white px-5 py-3 text-3xl font-black text-slate-950 sm:text-5xl">
+                  {duelScore.homeGoals} x {duelScore.awayGoals}
+                </p>
+                <p className="truncate text-left text-lg font-black sm:text-3xl">{duelMatch.away}</p>
+              </div>
+
+              {duelMatch.penalties && duelMinute > (getPenaltyStartMinute(duelMatch) || 90) && (
+                <PenaltyShootoutPanel match={duelMatch} minute={duelMinute} />
+              )}
+
+              {isDuelFinished && (
+                <div className="mt-4 rounded-2xl bg-white/10 px-4 py-3 text-center">
+                  <p className="text-sm font-black uppercase tracking-[0.18em] text-yellow-300">
+                    {isDuelSeriesFinished
+                      ? winnerLabel === "Empate"
+                        ? "Duelo terminou empatado"
+                        : `${winnerLabel} venceu o duelo`
+                      : duelMatch.winnerLabel
+                      ? `${duelMatch.winnerLabel} venceu o jogo ${duelMatchIndex + 1}${duelMatch.decidedBy !== "normal" ? ` nos ${duelMatch.decidedBy}` : ""}`
+                      : "Empate neste jogo"}
+                  </p>
+                  {isDuelFinished && (duelMatch.extraTimeGoals || duelMatch.penalties) && (
+                    <p className="mt-2 text-xs font-bold text-slate-300">
+                      Placar completo: {getDuelMatchScoreLabel(duelMatch)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-5 rounded-2xl bg-white/10 p-3">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
+                  Lances do jogo
+                </p>
+                {duelEvents.length ? (
+                  <div className="grid gap-2">
+                    {duelEvents.map((event) => (
+                      <div key={event.id} className="rounded-2xl bg-white/10 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{event.icon}</span>
+                          <span className="event-minute-badge rounded-full bg-emerald-3000 px-2 py-0.5 text-[10px] font-black text-white">
+                            {event.minute}'
+                          </span>
+                          <p className="truncate text-sm font-black">{event.title}</p>
+                        </div>
+                        <p className="mt-1 text-xs font-bold leading-relaxed text-slate-300">
+                          {event.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-slate-300">
+                    A bola está rolando. Os lances aparecem conforme o relógio avança.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[1.5rem] border border-slate-900/10 bg-white/75 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                Jogos do confronto
+              </p>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {onlineDuelResult.matches.map((match, index) => {
+                  const wasPlayed = index < duelMatchIndex || (index === duelMatchIndex && isDuelFinished);
+                  const isCurrent = index === duelMatchIndex && !isDuelSeriesFinished;
+
+                  return (
+                    <div
+                      key={`duel-match-${index}`}
+                      className={`rounded-2xl border px-4 py-3 ${
+                        isCurrent
+                          ? "border-emerald-400 bg-emerald-300/20"
+                          : wasPlayed
+                          ? "border-slate-900/10 bg-white"
+                          : "border-slate-900/10 bg-white/55 opacity-70"
+                      }`}
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                        Jogo {index + 1}
+                      </p>
+                      <p className="mt-1 text-sm font-black text-slate-950">
+                        {match.home} {wasPlayed ? getDuelMatchScoreLabel(match) : "x"} {match.away}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        {wasPlayed
+                          ? match.winnerLabel
+                            ? `Vencedor: ${match.winnerLabel}${match.decidedBy !== "normal" ? ` (${match.decidedBy})` : ""}`
+                            : "Empate"
+                          : "Aguardando"}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "online-league" && onlineRoom) {
+    if (!onlineLeagueResult) {
+      return (
+        <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+          <ThemeStyles />
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="text-center">
+              <p className="text-lg font-black">Carregando o Brasileirão Online...</p>
+              <p className="mt-2 text-sm font-bold text-slate-600">Sincronizando o resultado com o host. Aguarde alguns segundos.</p>
+            </div>
+          </div>
+        </main>
+      );
+    }
+    const currentRound = onlineLeagueResult.rounds[onlineRevealedRounds] || null;
+    const previousRound = onlineRevealedRounds > 0
+      ? onlineLeagueResult.rounds[onlineRevealedRounds - 1]
+      : null;
+    const partialTable = getLiveOnlineLeagueTable(onlineLeagueResult, onlineRevealedRounds, onlineLiveRound);
+    const humanRanking = getHumanOnlineRanking(partialTable);
+    const isRoundLive = Boolean(onlineLiveRound);
+    const liveMainMatch = getMainHumanLiveMatch(onlineLiveRound?.round, localParticipantId);
+    const liveMainScore = liveMainMatch ? getLiveMatchScore(liveMainMatch, onlineLiveRound?.minute || 0) : null;
+    const liveMainEvents = liveMainMatch ? getRecentLiveEvents(liveMainMatch, onlineLiveRound?.minute || 0, 3) : [];
+    const isLeagueFinished = !isRoundLive && onlineRevealedRounds >= onlineLeagueResult.rounds.length;
+    const onlineChampion = isLeagueFinished ? partialTable[0] : null;
+    const onlineChampionRoster = getChampionRosterForModal(onlineChampion);
+    const championUsesDatabaseFormation = Boolean(onlineChampion && !onlineChampion.isOnlineHumanTeam && onlineChampionRoster.length);
+    const onlineLeaderboards = getLeagueLeaderboards({
+      rounds: onlineLeagueResult.rounds,
+      revealedRounds: onlineRevealedRounds,
+      liveRound: onlineLiveRound?.round || null,
+      liveMinute: onlineLiveRound?.minute || 0,
+    });
+
+    return (
+      <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
+        <ThemeStyles />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+
+        {onlineChampion && !dismissedOnlineChampionModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/65 px-4 py-6 backdrop-blur-sm">
+            <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-yellow-300/40 bg-[#f7f0df] p-6 text-center shadow-[0_30px_90px_rgba(15,23,42,0.35)] sm:p-8">
+              <button
+                type="button"
+                onClick={() => setDismissedOnlineChampionModal(true)}
+                className="absolute right-4 top-4 rounded-full bg-white/80 p-2 text-slate-700 shadow-sm transition hover:scale-105"
+                aria-label="Fechar comemoração"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-300 text-yellow-950 shadow-[0_14px_35px_rgba(234,179,8,0.35)]">
+                <Trophy size={32} />
+              </div>
+
+              <p className="mt-5 text-xs font-black uppercase tracking-[0.28em] text-yellow-700">
+                Campeão do Brasileirão Online
+              </p>
+              <h2 className="mt-2 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
+                Parabéns, {onlineChampion.label}!
+              </h2>
+              <p className="mx-auto mt-3 max-w-xl text-sm font-bold leading-relaxed text-slate-600">
+                O elenco campeão terminou na liderança com {onlineChampion.points} pontos, {onlineChampion.wins} vitórias e saldo de {onlineChampion.goalDifference > 0 ? `+${onlineChampion.goalDifference}` : onlineChampion.goalDifference}.
+              </p>
+
+              <div className="mt-6 rounded-[1.5rem] bg-white/80 p-4 text-left ring-1 ring-slate-900/10">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Elenco campeão
+                  </p>
+                  {onlineChampion.isOnlineHumanTeam && onlineChampion.playerName && (
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                      Player: {onlineChampion.playerName}
+                    </span>
+                  )}
+                </div>
+
+                {onlineChampionRoster.length ? (
+                  championUsesDatabaseFormation ? (
+                    <div>
+                      <p className="mb-3 rounded-2xl bg-yellow-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-yellow-800">
+                        Escalação base 4-4-2 com os melhores encaixes por posição
+                      </p>
+                      <DatabaseChampionFormation
+                        champion={onlineChampion}
+                        roster={onlineChampionRoster}
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {onlineChampionRoster.map((player) => (
+                        <div
+                          key={`${onlineChampion.id}-${player.id}-${player.position}`}
+                          className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-slate-950">{player.name}</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">{player.position}</p>
+                          </div>
+                          <span className="text-lg font-black text-slate-950">{player.ovr}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
+                    Elenco detalhado indisponível para este campeão.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setDismissedOnlineChampionModal(true)}
+                  className="force-dark-text inline-flex items-center justify-center rounded-2xl bg-yellow-300 px-6 py-3 text-sm font-black uppercase tracking-[0.14em] text-yellow-950 shadow-[0_14px_30px_rgba(234,179,8,0.22)] transition hover:scale-[1.02]"
+                >
+                  Ver classificação final
+                </button>
+
+                <button
+                  type="button"
+                  onClick={restartOnlineFromLobby}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-900/10 bg-white px-6 py-3 text-sm font-black uppercase tracking-[0.14em] text-slate-800 transition hover:bg-slate-50"
+                >
+                  Jogar de novo
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <section className="mx-auto max-w-[1760px] px-4 py-5 sm:px-6 sm:py-8">
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <button
+              onClick={() => setScreen("online-draft")}
+              className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
+            >
+              <ArrowLeft size={18} />
+              Voltar aos times
+            </button>
+
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+              <div className="rounded-2xl border border-slate-900/10 bg-white/75 px-4 py-2 text-sm font-black text-slate-700">
+                {onlineRoom.roomName} · {onlineRoom.code}
+              </div>
+              {renderExitOnlineRoomButton()}
+            </div>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[250px_minmax(0,1fr)_440px] xl:items-start">
+            <aside className="space-y-5 xl:sticky xl:top-5">
+              <LeaderboardPanel
+                title="Artilharia"
+                leaders={onlineLeaderboards.scorers}
+                valueLabel="gols"
+                limit={5}
+                compact
+              />
+
+              <LeaderboardPanel
+                title="Assistências"
+                leaders={onlineLeaderboards.assistants}
+                valueLabel="assistências"
+                limit={5}
+                compact
+              />
+            </aside>
+
+            <div className="space-y-5">
+              <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-6 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-700">
+                  Brasileirão Online
+                </p>
+                <div className="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <h1 className="text-4xl font-black tracking-tight md:text-5xl">
+                      {isLeagueFinished ? "Campeonato finalizado" : `Rodada ${onlineRevealedRounds + 1}/38`}
+                    </h1>
+                    <p className="mt-2 max-w-2xl text-sm font-bold leading-relaxed text-slate-500">
+                      Liga com {onlineLeagueResult.humanTeams.length} time(s) humano(s) e {Math.max(0, 20 - onlineLeagueResult.humanTeams.length)} time(s) da database.
+                      {isOnlineHost
+                        ? " Você controla as rodadas e todos veem a mesma simulação ao vivo."
+                        : " A simulação roda sincronizada para todos. Acompanhe os placares em tempo real."}
+                    </p>
+                  </div>
+
+                  <div className="flex w-full flex-col gap-3 md:w-auto md:min-w-[360px]">
+                    <OnlineLiveSpeedControl
+                      value={onlineLiveSpeed}
+                      onChange={updateOnlineLiveSpeed}
+                      compact
+                      disabled={!isOnlineHost}
+                    />
+                    {isOnlineHost ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={revealNextOnlineRound}
+                          disabled={isLeagueFinished || isRoundLive}
+                          className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-emerald-950 shadow-[0_14px_30px_rgba(16,185,129,0.20)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Play size={18} />
+                          {isRoundLive ? "Rodada em andamento" : onlineRevealedRounds === 0 ? "Iniciar rodada 1" : isLeagueFinished ? "Finalizado" : "Iniciar próxima rodada"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={simulateAllOnlineRounds}
+                          disabled={isLeagueFinished || isRoundLive}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/85 px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-800 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <RefreshCw size={18} />
+                          Simular tudo
+                        </button>
+
+                        {isLeagueFinished && (
+                          <button
+                            type="button"
+                            onClick={restartOnlineFromLobby}
+                            className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-yellow-300 px-5 py-3 text-sm font-black uppercase tracking-[0.12em] text-yellow-950 transition hover:scale-[1.02] sm:col-span-2"
+                          >
+                            <RefreshCw size={18} />
+                            Jogar de novo
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-emerald-300/40 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900">
+                        {isRoundLive
+                          ? `Rodada ${onlineLiveRound?.round?.round || onlineRevealedRounds + 1} ao vivo · ${onlineLiveRound?.minute || 0}'`
+                          : isLeagueFinished
+                            ? "Campeonato finalizado."
+                            : "Aguardando o ADM iniciar a próxima rodada."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {isRoundLive && liveMainMatch ? (
+                <div className="rounded-[2rem] border border-emerald-300/50 bg-white/90 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                        Rodada ao vivo · {onlineLiveRound.round.round}/38
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black">Seu jogo em destaque</h2>
+                    </div>
+                    <span className="force-dark-text w-fit rounded-2xl bg-emerald-300 px-4 py-2 text-xl font-black text-emerald-950">
+                      {onlineLiveRound.minute}'
+                    </span>
+                  </div>
+
+                  <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                      <p className="truncate text-right text-lg font-black sm:text-2xl">{liveMainMatch.home}</p>
+                      <p className="leader-row-readable rounded-2xl bg-white px-4 py-2 text-2xl font-black text-slate-950 sm:text-3xl">
+                        {liveMainScore.homeGoals} x {liveMainScore.awayGoals}
+                      </p>
+                      <p className="truncate text-left text-lg font-black sm:text-2xl">{liveMainMatch.away}</p>
+                    </div>
+
+                    <div className="mt-5 rounded-2xl bg-white/10 p-3">
+                      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
+                        Gols
+                      </p>
+                      {liveMainEvents.length ? (
+                        <div className="grid gap-2">
+                          {liveMainEvents.map((event) => (
+                            <div key={event.id} className="rounded-2xl bg-white/10 px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{event.icon}</span>
+                                <span className="event-minute-badge rounded-full bg-emerald-3000 px-2 py-0.5 text-[10px] font-black text-white">
+                                  {event.minute}'
+                                </span>
+                                <p className="truncate text-sm font-black">{event.title}</p>
+                              </div>
+                              <p className="mt-1 text-xs font-bold leading-relaxed text-slate-300">
+                                {event.description}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-slate-300">
+                          A bola está rolando. Os gols aparecem aqui conforme o relógio avança.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                      Outros jogos da rodada
+                    </p>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {onlineLiveRound.round.matches.map((match, index) => {
+                        const score = getLiveMatchScore(match, onlineLiveRound.minute);
+                        const isMainMatch = match.homeTeam.id === liveMainMatch.homeTeam.id && match.awayTeam.id === liveMainMatch.awayTeam.id;
+
+                        return (
+                          <div
+                            key={`${onlineLiveRound.round.round}-${match.homeTeam.id}-${match.awayTeam.id}-${index}`}
+                            className={`rounded-2xl border px-4 py-3 ${
+                              isMainMatch
+                                ? "highlight-outline-card border-emerald-400 bg-white text-slate-950"
+                                : "border-slate-900/10 bg-white/80"
+                            }`}
+                          >
+                            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-xs font-black sm:text-sm">
+                              <p className="truncate text-right">{match.home}</p>
+                              <p className="highlight-dark-pill rounded-xl bg-slate-950 px-3 py-1 text-white">
+                                {score.homeGoals} x {score.awayGoals}
+                              </p>
+                              <p className="truncate text-left">{match.away}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : previousRound ? (
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                        Última rodada simulada
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black">Rodada {previousRound.round}</h2>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                      {previousRound.matches.length} jogos
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {previousRound.matches.map((match, index) => (
+                      <div
+                        key={`${previousRound.round}-${match.homeTeam.id}-${match.awayTeam.id}-${index}`}
+                        className={`rounded-2xl border px-4 py-3 ${
+                          match.hasHumanTeam
+                            ? "highlight-outline-card border-emerald-400 bg-white text-slate-950"
+                            : "border-slate-900/10 bg-white/80"
+                        }`}
+                      >
+                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-sm font-black">
+                          <p className="truncate text-right">{match.home}</p>
+                          <p className="highlight-dark-pill rounded-xl bg-slate-950 px-3 py-1 text-white">
+                            {match.homeGoals} x {match.awayGoals}
+                          </p>
+                          <p className="truncate text-left">{match.away}</p>
+                        </div>
+                        {match.hasHumanTeam && (
+                          <p className="mt-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                            Jogo com player
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-[2rem] border border-dashed border-slate-900/15 bg-white/60 p-8 text-center">
+                  <p className="text-sm font-bold text-slate-500">
+                    Clique em “Iniciar rodada 1” para começar a simulação ao vivo.
+                  </p>
+                </div>
+              )}
+
+              {currentRound && !isLeagueFinished && !isRoundLive && (
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/70 p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Próximos jogos
+                  </p>
+                  <div className="mt-4 grid gap-2 md:grid-cols-2">
+                    {currentRound.matches.map((match, index) => (
+                      <div
+                        key={`${currentRound.round}-${match.homeTeam.id}-${match.awayTeam.id}-${index}`}
+                        className="rounded-2xl bg-white/80 px-4 py-3 text-sm font-bold text-slate-600"
+                      >
+                        {match.home} x {match.away}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <aside className="space-y-5 xl:sticky xl:top-5">
+              <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Classificação geral
+                </p>
+                <div className="mt-4 max-h-[640px] overflow-y-auto pr-1">
+                  <LeagueStandingsTable
+                    table={partialTable}
+                    highlightHuman
+                    compact
+                    emptyMessage="A tabela começa zerada e atualiza rodada por rodada."
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                  Ranking dos players
+                </p>
+                <div className="mt-4 grid gap-2">
+                  {humanRanking.length ? (
+                    humanRanking.map((team, index) => (
+                      <div
+                        key={team.id}
+                        className="highlight-outline-card rounded-2xl border border-emerald-400/55 bg-white px-4 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-black text-slate-950">
+                            {index + 1}º {team.label}
+                          </p>
+                          <p className="classification-points-cell text-sm font-black text-slate-950">
+                            {team.points} pts
+                          </p>
+                        </div>
+                        <p className="mt-1 text-[11px] font-bold text-slate-500">
+                          {team.overallPosition}º geral · {team.wins}V {team.draws}E {team.losses}D · SG {team.goalDifference}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
+                      A classificação aparece depois da primeira rodada.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (screen === "campaign" && leagueResult) {
     const revealedMatches = leagueResult.userMatches.slice(0, revealedMatchesCount);
     const campaignStats = getPartialCampaignStats(revealedMatches);
     const partialStandingInfo = getPartialUserStanding(leagueResult, revealedMatchesCount);
     const partialTable = partialStandingInfo.table;
     const campaignLeaders = getPartialCampaignLeaders(revealedMatches);
+    const soloLeaderboards = getLeagueLeaderboards({
+      rounds: leagueResult.rounds,
+      revealedRounds: revealedMatchesCount,
+      liveRound: soloLiveMatch
+        ? {
+            round: soloLiveMatch.match.round,
+            matches: [{
+              ...soloLiveMatch.match,
+              events: getSoloLiveMatchEvents(soloLiveMatch.match),
+            }],
+          }
+        : null,
+      liveMinute: soloLiveMatch?.minute || 0,
+    });
     const partialPosition = partialStandingInfo.position;
     const isFinished = revealedMatchesCount >= leagueResult.userMatches.length;
     const nextMatch = leagueResult.userMatches[revealedMatchesCount] || null;
@@ -2589,7 +9090,7 @@ ${lineupText}`;
         <ThemeStyles />
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
 
-        <section className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-8">
+        <section className="mx-auto max-w-[1760px] px-4 py-5 sm:px-6 sm:py-8">
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <button
               onClick={() => setScreen("draft")}
@@ -2600,7 +9101,7 @@ ${lineupText}`;
             </button>
 
             <button
-              onClick={goHome}
+              onClick={restartSoloFromFormation}
               className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
             >
               <RefreshCw size={16} />
@@ -2626,7 +9127,7 @@ ${lineupText}`;
                   </div>
 
                   <div className="rounded-2xl bg-white/75 p-3">
-                    <p className="text-3xl font-black">{campaignStats.points}</p>
+                    <p className="classification-points-cell text-3xl font-black">{campaignStats.points}</p>
                     <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                       pontos
                     </p>
@@ -2695,7 +9196,7 @@ ${lineupText}`;
 
                   <div className="grid grid-cols-4 gap-2 text-center lg:hidden">
                     <div className="rounded-2xl border border-slate-900/10 bg-white/75 px-3 py-2">
-                      <p className="text-xl font-black text-emerald-700">{campaignStats.points}</p>
+                      <p className="classification-points-cell text-xl font-black text-emerald-700">{campaignStats.points}</p>
                       <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
                         pts
                       </p>
@@ -2726,9 +9227,82 @@ ${lineupText}`;
                   <span>GP {campaignStats.goalsFor} / GC {campaignStats.goalsAgainst}</span>
                   <span>{isFinished ? "Campanha encerrada" : nextMatch ? `Próximo: ${nextMatch.opponent}` : "Pronto"}</span>
                 </div>
+
+                <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-900/10 bg-white/75 p-3 sm:flex-row sm:items-end sm:justify-between">
+                  <OnlineLiveSpeedControl
+                    value={onlineLiveSpeed}
+                    onChange={setOnlineLiveSpeed}
+                    compact
+                  />
+
+                  <button
+                    onClick={simulateAllSoloMatches}
+                    disabled={isFinished}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-900/10 bg-white/90 px-4 py-3 text-sm font-black text-slate-800 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw size={18} />
+                    Simular tudo
+                  </button>
+                </div>
               </div>
 
-              {revealedMatchesCount === 0 ? (
+              {soloLiveMatch ? (
+                <div className="rounded-[2rem] border border-emerald-600/20 bg-white/90 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.10)]">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-700">
+                        Rodada ao vivo · {soloLiveMatch.match.round}/38
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black">Seu jogo em tempo real</h2>
+                    </div>
+                    <div className="force-dark-text rounded-2xl bg-emerald-300 px-5 py-3 text-2xl font-black text-emerald-950">
+                      {soloLiveMatch.minute}'
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-center">
+                    <p className="truncate text-right text-lg font-black sm:text-2xl">{soloLiveMatch.match.home}</p>
+                    <div className="rounded-2xl bg-slate-950 px-5 py-3 text-2xl font-black text-white sm:text-3xl">
+                      {getSoloLiveMatchScore(soloLiveMatch.match, soloLiveMatch.minute).homeGoals} x {getSoloLiveMatchScore(soloLiveMatch.match, soloLiveMatch.minute).awayGoals}
+                    </div>
+                    <p className="truncate text-left text-lg font-black sm:text-2xl">{soloLiveMatch.match.away}</p>
+                  </div>
+
+                  <div className="mt-5 rounded-3xl border border-slate-900/10 bg-white/75 p-4">
+                    <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-slate-500">
+                      Últimos lances
+                    </p>
+                    <div className="space-y-2">
+                      {getRecentSoloLiveEvents(soloLiveMatch.match, soloLiveMatch.minute, 3).length ? (
+                        getRecentSoloLiveEvents(soloLiveMatch.match, soloLiveMatch.minute, 3).map((event) => (
+                          <div
+                            key={event.id}
+                            className={`rounded-2xl border px-3 py-3 ${
+                              event.isUserGoal
+                                ? "force-dark-text border-emerald-600/20 bg-emerald-100/80"
+                                : "border-slate-900/10 bg-white/85"
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="event-minute-badge flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
+                                {event.minute}'
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-black">{event.icon} {event.title}</p>
+                                <p className="mt-0.5 text-xs font-bold text-slate-500">{event.description}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-slate-900/10 bg-white/85 p-4 text-center text-sm font-bold text-slate-500">
+                          A bola está rolando. Os principais lances aparecem aqui.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : revealedMatchesCount === 0 ? (
                 <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-6 text-center shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
                   <Play className="mx-auto mb-4 text-emerald-700" size={52} />
                   <h2 className="text-3xl font-black">Começar campanha</h2>
@@ -2741,7 +9315,7 @@ ${lineupText}`;
                     className="force-dark-text mt-7 inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
                   >
                     <Play size={20} fill="currentColor" />
-                    Revelar 1º jogo
+                    Iniciar 1ª rodada ao vivo
                   </button>
                 </div>
               ) : (
@@ -2845,7 +9419,7 @@ ${lineupText}`;
                         className="force-dark-text inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-6 py-4 font-black text-emerald-950 transition hover:bg-emerald-200"
                       >
                         <Play size={20} fill="currentColor" />
-                        Próximo jogo
+                        Iniciar próxima rodada
                       </button>
                     )}
                   </div>
@@ -2854,7 +9428,20 @@ ${lineupText}`;
             </div>
 
             <aside className="hidden xl:sticky xl:top-5 xl:block">
-              <div className="rounded-[2rem] border border-slate-900/10 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+              <div className="space-y-5">
+                <LeaderboardPanel
+                  title="Artilharia"
+                  leaders={soloLeaderboards.scorers}
+                  valueLabel="gols"
+                />
+
+                <LeaderboardPanel
+                  title="Assistências"
+                  leaders={soloLeaderboards.assistants}
+                  valueLabel="assistências"
+                />
+
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/90 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-lg font-black">Tabela parcial</h2>
                   <span className="force-dark-text rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-950">
@@ -2862,34 +9449,17 @@ ${lineupText}`;
                   </span>
                 </div>
 
-                <div className="space-y-2">
-                  {partialTable.slice(0, 10).map((team, index) => (
-                    <div
-                      key={team.id}
-                      className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm ${
-                        team.isUserTeam
-                          ? "force-dark-text border-emerald-500/30 bg-emerald-100/90"
-                          : "border-slate-900/10 bg-white/75"
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-black">
-                          {index + 1}. {team.label}
-                        </p>
-                        <p className="text-[11px] font-bold text-slate-500">
-                          {team.wins}V {team.draws}E {team.losses}D • SG {team.goalDifference}
-                        </p>
-                      </div>
-
-                      <p className="shrink-0 text-lg font-black text-emerald-700">
-                        {team.points}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                <LeagueStandingsTable
+                  table={partialTable}
+                  limit={20}
+                  highlightUser
+                  compact
+                  emptyMessage="A tabela parcial aparece conforme a campanha avança."
+                />
 
                 <div className="mt-3 rounded-2xl border border-slate-900/10 bg-white/75 p-3 text-xs font-bold text-slate-500">
                   A tabela atualiza rodada por rodada com todos os jogos simulados da rodada, não só o seu jogo.
+                </div>
                 </div>
               </div>
             </aside>
@@ -2919,7 +9489,7 @@ ${lineupText}`;
             </button>
 
             <button
-              onClick={goHome}
+              onClick={restartSoloFromFormation}
               className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-white"
             >
               <RefreshCw size={16} />
@@ -2969,7 +9539,7 @@ ${lineupText}`;
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
                     Pontos
                   </p>
-                  <p className="mt-2 text-3xl font-black text-emerald-700">
+                  <p className="classification-points-cell mt-2 text-3xl font-black text-emerald-700">
                     {userStanding.points}
                   </p>
                 </div>
@@ -3121,93 +9691,12 @@ ${lineupText}`;
                 <h2 className="text-2xl font-black">Tabela final</h2>
               </div>
 
-              <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[680px] text-left text-sm">
-                  <thead className="bg-white/75 text-xs uppercase tracking-[0.18em] text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3">#</th>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3 text-center">Pts</th>
-                      <th className="px-4 py-3 text-center">J</th>
-                      <th className="px-4 py-3 text-center">V</th>
-                      <th className="px-4 py-3 text-center">E</th>
-                      <th className="px-4 py-3 text-center">D</th>
-                      <th className="px-4 py-3 text-center">SG</th>
-                      <th className="px-4 py-3 text-center">GP</th>
-                      <th className="px-4 py-3 text-center">GC</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {table.map((team, index) => (
-                      <tr
-                        key={team.id}
-                        className={`border-t border-white/5 ${
-                          team.isUserTeam ? "bg-emerald-300/15" : ""
-                        }`}
-                      >
-                        <td className="px-4 py-3 font-black">{index + 1}</td>
-                        <td className="px-4 py-3 font-black">{team.label}</td>
-                        <td className="px-4 py-3 text-center font-black">{team.points}</td>
-                        <td className="px-4 py-3 text-center">{team.played}</td>
-                        <td className="px-4 py-3 text-center">{team.wins}</td>
-                        <td className="px-4 py-3 text-center">{team.draws}</td>
-                        <td className="px-4 py-3 text-center">{team.losses}</td>
-                        <td className="px-4 py-3 text-center">{team.goalDifference}</td>
-                        <td className="px-4 py-3 text-center">{team.goalsFor}</td>
-                        <td className="px-4 py-3 text-center">{team.goalsAgainst}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="divide-y divide-white/10 md:hidden">
-                {table.map((team, index) => (
-                  <div
-                    key={team.id}
-                    className={`p-4 ${team.isUserTeam ? "bg-emerald-300/15" : ""}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-base font-black">
-                          {index + 1}. {team.label}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {team.wins}V {team.draws}E {team.losses}D • SG {team.goalDifference}
-                        </p>
-                      </div>
-
-                      <div className="shrink-0 text-right">
-                        <p className="text-2xl font-black text-emerald-700">
-                          {team.points}
-                        </p>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                          pts
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
-                      <div className="rounded-xl bg-white/75 px-2 py-2">
-                        <p className="font-black">{team.played}</p>
-                        <p className="text-slate-500">J</p>
-                      </div>
-                      <div className="rounded-xl bg-white/75 px-2 py-2">
-                        <p className="font-black">{team.goalsFor}</p>
-                        <p className="text-slate-500">GP</p>
-                      </div>
-                      <div className="rounded-xl bg-white/75 px-2 py-2">
-                        <p className="font-black">{team.goalsAgainst}</p>
-                        <p className="text-slate-500">GC</p>
-                      </div>
-                      <div className="rounded-xl bg-white/75 px-2 py-2">
-                        <p className="font-black">{team.goalDifference}</p>
-                        <p className="text-slate-500">SG</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="p-4 sm:p-5">
+                <LeagueStandingsTable
+                  table={table}
+                  highlightUser
+                  emptyMessage="A tabela final aparece ao terminar a campanha."
+                />
               </div>
             </div>
 
@@ -3227,7 +9716,7 @@ ${lineupText}`;
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-black ${
                           match.result === "V"
-                            ? "bg-emerald-300 text-emerald-950"
+                            ? "selected-green-card online-speed-option-active bg-emerald-300 text-emerald-950"
                             : match.result === "E"
                             ? "bg-yellow-300 text-yellow-950"
                             : "bg-red-400 text-red-950"
@@ -3268,7 +9757,7 @@ ${lineupText}`;
       <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
         <ThemeStyles />
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
-        <section className="mx-auto max-w-7xl px-6 py-8">
+        <section className="mx-auto max-w-[1760px] px-6 py-8">
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <button
               onClick={() => setScreen("formations")}
@@ -3303,7 +9792,7 @@ ${lineupText}`;
 
           <DraftSectorPanel lineup={lineup} revealValues={revealDraftValues} />
 
-          <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(360px,0.92fr)_minmax(520px,1.08fr)] lg:items-start">
+          <div className="mx-auto grid max-w-[1760px] gap-6 lg:grid-cols-[minmax(360px,0.92fr)_minmax(520px,1.08fr)] lg:items-start">
             <div className="space-y-6 lg:sticky lg:top-5">
               <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-5 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
               {isComplete ? (
@@ -3580,7 +10069,7 @@ ${lineupText}`;
                     <span
                       className={`flex h-9 w-9 items-center justify-center rounded-full ${
                         isSelected
-                          ? "bg-emerald-300 text-emerald-950"
+                          ? "selected-green-card online-speed-option-active bg-emerald-300 text-emerald-950"
                           : "bg-white/10 text-slate-700"
                       }`}
                     >
@@ -3619,7 +10108,7 @@ ${lineupText}`;
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-full ${
                       gameMode === "normal"
-                        ? "bg-emerald-300 text-emerald-950"
+                        ? "selected-green-card online-speed-option-active bg-emerald-300 text-emerald-950"
                         : "bg-white/70 text-slate-700"
                     }`}
                   >
@@ -3647,7 +10136,7 @@ ${lineupText}`;
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-full text-xl font-black ${
                       gameMode === "expert"
-                        ? "bg-emerald-300 text-emerald-950"
+                        ? "selected-green-card online-speed-option-active bg-emerald-300 text-emerald-950"
                         : "bg-white/70 text-slate-700"
                     }`}
                   >
@@ -3814,22 +10303,42 @@ ${lineupText}`;
           fazer a campanha perfeita no Brasileirão.
         </p>
 
-        <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-          <button
-            onClick={startDraft}
-            className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-7 py-4 font-bold text-emerald-950 transition hover:bg-emerald-200"
-          >
-            <Play size={20} fill="currentColor" />
-            Começar Draft
-          </button>
+        <div className="mt-10 flex w-full max-w-3xl flex-col items-center gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
+            <button
+              type="button"
+              onClick={startDraft}
+              className="force-dark-text inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-7 py-4 font-bold text-emerald-950 transition hover:bg-emerald-200"
+            >
+              <Play size={20} fill="currentColor" />
+              Jogar Solo
+            </button>
 
-          <button
-            onClick={() => setScreen("support")}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/70 px-7 py-4 font-bold text-slate-950 transition hover:bg-white"
-          >
-            <Users size={20} />
-            Apoia-se
-          </button>
+            <button
+              type="button"
+              onClick={() => handleEnterOnlineClick("online-home")}
+              disabled={isOnlineApiLoading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/25 bg-white/80 px-7 py-4 font-bold text-slate-950 transition hover:bg-white disabled:cursor-wait disabled:opacity-70"
+            >
+              <Users size={20} />
+              {isOnlineApiLoading ? "Conectando..." : "Jogar Online"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScreen("support")}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/70 px-7 py-4 font-bold text-slate-950 transition hover:bg-white"
+            >
+              <Trophy size={20} />
+              Apoia-se
+            </button>
+          </div>
+
+          {onlineApiError ? (
+            <p className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
+              {onlineApiError}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-10 grid w-full max-w-4xl gap-4 md:grid-cols-3">

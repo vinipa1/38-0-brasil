@@ -16204,13 +16204,7 @@ export const historicalTeams = [
         positions: ["ZAG"],
         ovr: 82,
       },
-      {
-        id: "renato-santos-corinthians-2025",
-        name: "Renato Santos",
-        nationality: "🇧🇷",
-        positions: ["ZAG"],
-        ovr: 73,
-      },
+    
       {
         id: "raniele-corinthians-2025",
         name: "Raniele",
