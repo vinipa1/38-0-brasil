@@ -146,6 +146,7 @@ export async function listLobbyRooms({ onlineMode = null, difficulty = null, max
   return snapshot.docs
     .map((entry) => ({ id: entry.id, ...entry.data() }))
     .filter((room) => {
+      if (room.config?.isPrivate) return false; // private rooms only via code + password
       if (onlineMode && room.config?.onlineMode !== onlineMode) return false;
       if (difficulty && room.config?.onlineMode === "league" && room.config?.difficulty !== difficulty) {
         return false;
@@ -233,13 +234,7 @@ export async function createRoomDocument(room) {
 
   try {
     await setDoc(roomRef, payload);
-    console.log("[createRoom] setDoc succeeded for", code);
   } catch (err) {
-    console.error("[createRoom] setDoc FAILED", {
-      code: err?.code,
-      message: err?.message,
-      fullError: err,
-    });
     throw err;
   }
 

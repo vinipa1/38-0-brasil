@@ -279,15 +279,20 @@ function getMatchExpectation(attackingTeam, defendingTeam, homeBonus = 0) {
     getTeamControlStrength(attackingTeam) - getTeamControlStrength(defendingTeam);
   const overallGap = attackingTeam.strength - defendingTeam.strength;
 
-  const diff = attack - defense + controlGap * 0.34 + overallGap * 0.24 + homeBonus;
+  const diff = attack - defense + controlGap * 0.3 + overallGap * 0.32 + homeBonus;
 
-  let expected = 1.18 + diff / 18;
+  let expected = 1.15 + diff / 17.5;
 
-  if (attackingTeam.strength >= 90) expected += 0.12;
-  if (attackingTeam.strength >= 94) expected += 0.12;
-  if (defendingTeam.strength <= 78) expected += 0.14;
+  // Light home advantage (user requested "leve leve")
+  if (homeBonus > 0) {
+    expected += 0.08;
+  }
 
-  return clampNumber(expected, 0.2, 3.65);
+  // Strong teams perform better, but not overwhelmingly
+  if (attackingTeam.strength >= 88) expected += 0.08;
+  if (attackingTeam.strength >= 93) expected += 0.08;
+
+  return clampNumber(expected, 0.25, 3.4);
 }
 
 function generateGoalsFromExpected(expectedGoals) {
@@ -306,7 +311,7 @@ function generateGoalsFromExpected(expectedGoals) {
 }
 
 function generateMatchScore(homeTeam, awayTeam) {
-  const homeExpected = getMatchExpectation(homeTeam, awayTeam, 1.6);
+  const homeExpected = getMatchExpectation(homeTeam, awayTeam, 1.35); // leve vantagem mandante
   const awayExpected = getMatchExpectation(awayTeam, homeTeam, 0);
 
   let homeGoals = generateGoalsFromExpected(homeExpected);
@@ -315,27 +320,28 @@ function generateMatchScore(homeTeam, awayTeam) {
   const strengthGap = homeTeam.strength - awayTeam.strength;
   const expectedGap = homeExpected - awayExpected;
 
-  if (strengthGap >= 7 && homeGoals < awayGoals && Math.random() < 0.58) {
+  // Reduced anti-upset logic for more emotion (upsets can happen, but strong teams still favored)
+  if (strengthGap >= 8 && homeGoals < awayGoals && Math.random() < 0.35) {
     homeGoals = awayGoals;
   }
 
-  if (strengthGap <= -7 && homeGoals > awayGoals && Math.random() < 0.56) {
+  if (strengthGap <= -8 && homeGoals > awayGoals && Math.random() < 0.32) {
     awayGoals = homeGoals;
   }
 
-  if (strengthGap >= 11 && homeGoals === awayGoals && Math.random() < 0.42) {
+  if (strengthGap >= 12 && homeGoals === awayGoals && Math.random() < 0.28) {
     homeGoals += 1;
   }
 
-  if (strengthGap <= -11 && homeGoals === awayGoals && Math.random() < 0.38) {
+  if (strengthGap <= -12 && homeGoals === awayGoals && Math.random() < 0.25) {
     awayGoals += 1;
   }
 
-  if (expectedGap >= 0.9 && homeGoals < awayGoals && Math.random() < 0.72) {
+  if (expectedGap >= 1.0 && homeGoals < awayGoals && Math.random() < 0.45) {
     homeGoals = awayGoals;
   }
 
-  if (expectedGap <= -0.9 && homeGoals > awayGoals && Math.random() < 0.7) {
+  if (expectedGap <= -1.0 && homeGoals > awayGoals && Math.random() < 0.42) {
     awayGoals = homeGoals;
   }
 
@@ -2204,6 +2210,8 @@ const ONLINE_DEFAULT_CONFIG = {
   duelFormat: "single",
   duelExtraTime: true,
   duelPenalties: true,
+  isPrivate: false,
+  roomPassword: "",
 };
 
 const ONLINE_LIVE_SPEED_OPTIONS = [
@@ -4262,6 +4270,7 @@ function App() {
   const [pixCopyMessage, setPixCopyMessage] = useState("");
   const [joinRoomCode, setJoinRoomCode] = useState("");
   const [joinRoomFeedback, setJoinRoomFeedback] = useState("");
+  const [joinRoomPassword, setJoinRoomPassword] = useState("");
   const [matchmakingSetup, setMatchmakingSetup] = useState({
     onlineMode: "duel",
     difficulty: "normal",
@@ -4710,14 +4719,23 @@ function App() {
   useEffect(() => {
     if (screen !== "online-matchmaking" || !isOnlineApiReady) return undefined;
 
+    // Cleanup esporádico de salas antigas (apenas ao entrar na tela + a cada 2 minutos)
+    cleanupOldRooms().catch(console.error);
     refreshLobbyRooms().catch(console.error);
 
-    // Auto-refresh da lista de salas enquanto o usuário estiver na tela de matchmaking
-    const intervalId = window.setInterval(() => {
-      refreshLobbyRooms().catch(console.error);
-    }, 15000);
+    const cleanupInterval = window.setInterval(() => {
+      cleanupOldRooms().catch(console.error);
+    }, 120000); // 2 minutos
 
-    return () => window.clearInterval(intervalId);
+    // Auto-refresh mais leve da lista (sem cleanup)
+    const refreshInterval = window.setInterval(() => {
+      refreshLobbyRooms().catch(console.error);
+    }, 20000);
+
+    return () => {
+      clearInterval(cleanupInterval);
+      clearInterval(refreshInterval);
+    };
   }, [screen, isOnlineApiReady, matchmakingSetup.onlineMode, matchmakingSetup.difficulty]);
 
   const homeStatsCards = [
@@ -5317,7 +5335,7 @@ function App() {
     }
 
     setIsJoiningOnlineRoom(true);
-    setJoinRoomFeedback("");
+    setJoinRoomFeedback("Entrando na sala... (pode levar alguns segundos em salas movimentadas)");
 
     try {
       const room = await fetchRoomByCode(normalizedCode);
@@ -5330,6 +5348,15 @@ function App() {
       if (room.status !== "lobby") {
         setJoinRoomFeedback("Essa sala já está em andamento. Só é possível entrar enquanto ela estiver no lobby.");
         return;
+      }
+
+      if (room.config?.isPrivate) {
+        const enteredPass = (joinRoomPassword || "").trim();
+        const correctPass = (room.config.password || "").trim();
+        if (!enteredPass || enteredPass !== correctPass) {
+          setJoinRoomFeedback("Senha incorreta. Esta é uma sala privada.");
+          return;
+        }
       }
 
       await ensureOnlineApi();
@@ -5382,7 +5409,8 @@ function App() {
     setLobbyRoomsFeedback("");
 
     try {
-      await cleanupOldRooms();
+      // Cleanup de rooms antigas é feito de forma esporádica (não em todo refresh)
+      // para reduzir contenção em documentos de salas populares.
       const rooms = await listLobbyRooms({
         onlineMode: matchmakingSetup.onlineMode,
         difficulty:
@@ -5406,7 +5434,7 @@ function App() {
     }
 
     setJoiningLobbyRoomCode(normalizedCode);
-    setLobbyRoomsFeedback("");
+    setLobbyRoomsFeedback("Entrando na sala... (salas populares podem demorar alguns segundos devido à alta atividade simultânea)");
 
     try {
       await ensureOnlineApi();
@@ -5560,6 +5588,8 @@ function App() {
         maxPlayers: onlineSetup.onlineMode === "duel" ? 2 : 20,
         cardsPerTurn: Number(onlineSetup.cardsPerTurn),
         picksPerTurn: Number(onlineSetup.picksPerTurn),
+        isPrivate: !!onlineSetup.isPrivate,
+        password: onlineSetup.isPrivate ? (onlineSetup.roomPassword || "").trim() : undefined,
       },
       participants: [hostParticipant],
       participantIds: [playerId],
@@ -6816,6 +6846,14 @@ ${lineupText}`;
                   placeholder="Ex: A7K9Q"
                   className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-4 text-center text-2xl font-black uppercase tracking-[0.3em] text-slate-950 outline-none focus:border-emerald-400"
                 />
+
+                <input
+                  type="password"
+                  value={joinRoomPassword}
+                  onChange={(event) => setJoinRoomPassword(event.target.value)}
+                  placeholder="Senha (se a sala for privada)"
+                  className="mt-3 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400"
+                />
               </label>
 
               <label className="block">
@@ -7122,6 +7160,41 @@ ${lineupText}`;
                     placeholder="Sala 38–0"
                   />
                 </label>
+
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-3 rounded-2xl border border-slate-900/10 bg-white/70 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={onlineSetup.isPrivate}
+                      onChange={(event) => {
+                        updateOnlineSetup("isPrivate", event.target.checked);
+                        if (!event.target.checked) {
+                          updateOnlineSetup("roomPassword", "");
+                        }
+                      }}
+                      className="h-4 w-4 accent-emerald-500"
+                    />
+                    <span className="text-sm font-black text-slate-700">
+                      Sala privada (somente com código + senha)
+                    </span>
+                  </label>
+
+                  {onlineSetup.isPrivate && (
+                    <label className="mt-3 block">
+                      <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                        Senha da sala
+                      </span>
+                      <input
+                        type="password"
+                        value={onlineSetup.roomPassword}
+                        onChange={(event) => updateOnlineSetup("roomPassword", event.target.value)}
+                        className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white/80 px-4 py-3 text-sm font-bold outline-none transition focus:border-emerald-500"
+                        placeholder="Defina uma senha"
+                        required
+                      />
+                    </label>
+                  )}
+                </div>
 
                 <label className="block">
                   <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">

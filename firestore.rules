@@ -41,7 +41,9 @@ service cloud.firestore {
 
       allow delete: if isAuthed() && (
         isParticipant(resource.data) ||
-        (resource.data.updatedAt != null && resource.data.updatedAt < request.time - duration.value(5, "min"))
+        (resource.data.updatedAt != null && resource.data.updatedAt < request.time - duration.value(5, "min")) ||
+        (resource.data.createdAt != null && resource.data.createdAt < request.time - duration.value(5, "min")) ||
+        (resource.data.updatedAt == null && resource.data.createdAt == null)
       );
 
       match /leagueData/{docId} {
