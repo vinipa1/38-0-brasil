@@ -1534,13 +1534,7 @@ export const historicalTeams = [
         positions: ["GOL"],
         ovr: 76,
       },
-      {
-        id: "fagner-corinthians-2012",
-        name: "Fagner",
-        nationality: "🇧🇷",
-        positions: ["LD"],
-        ovr: 82,
-      },
+  
       {
         id: "alessandro-corinthians-2012",
         name: "Alessandro",
@@ -17182,13 +17176,7 @@ export const historicalTeams = [
         positions: ["CA", "PE", "PD"],
         ovr: 86,
       },
-      {
-        id: "washington-fluminense-2010",
-        name: "Washington",
-        nationality: "🇧🇷",
-        positions: ["CA"],
-        ovr: 82,
-      },
+     
       {
         id: "rodriguinho-fluminense-2010",
         name: "Rodriguinho",
