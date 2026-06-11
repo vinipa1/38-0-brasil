@@ -146,7 +146,8 @@ export async function listLobbyRooms({ onlineMode = null, difficulty = null, max
   return snapshot.docs
     .map((entry) => ({ id: entry.id, ...entry.data() }))
     .filter((room) => {
-      if (room.config?.isPrivate) return false; // private rooms only via code + password
+      // Mostrar TODAS as salas no lobby (incluindo as com senha).
+      // Salas com senha continuam protegidas: o pedido de senha acontece ao tentar entrar.
       if (onlineMode && room.config?.onlineMode !== onlineMode) return false;
       if (difficulty && room.config?.onlineMode === "league" && room.config?.difficulty !== difficulty) {
         return false;

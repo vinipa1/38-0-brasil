@@ -4306,6 +4306,11 @@ function App() {
   const [isLoadingLobbyRooms, setIsLoadingLobbyRooms] = useState(false);
   const [lobbyRoomsFeedback, setLobbyRoomsFeedback] = useState("");
   const [joiningLobbyRoomCode, setJoiningLobbyRoomCode] = useState("");
+
+  // Para entrar em salas com senha a partir da lista de salas abertas:
+  // mostramos todas as salas, mas pedimos a senha num "popup" (prompt inline) antes de concluir o join.
+  const [pendingPrivateLobbyRoom, setPendingPrivateLobbyRoom] = useState(null);
+  const [lobbyJoinPassword, setLobbyJoinPassword] = useState("");
   const onlineRoomRef = useRef(null);
   const onlineApiRef = useRef(null);
   const localParticipantIdRef = useRef("");
@@ -5350,7 +5355,8 @@ function App() {
         return;
       }
 
-      if (room.config?.isPrivate) {
+      const hasPassword = !!(room.config?.password && String(room.config.password).trim());
+      if (room.config?.isPrivate || hasPassword) {
         const enteredPass = (joinRoomPassword || "").trim();
         const correctPass = (room.config.password || "").trim();
         if (!enteredPass || enteredPass !== correctPass) {
@@ -5405,8 +5411,12 @@ function App() {
   }
 
   async function refreshLobbyRooms() {
-    setIsLoadingLobbyRooms(true);
+    // Ao atualizar a lista, fechamos qualquer prompt de senha pendente
+    setPendingPrivateLobbyRoom(null);
+    setLobbyJoinPassword("");
     setLobbyRoomsFeedback("");
+
+    setIsLoadingLobbyRooms(true);
 
     try {
       // Cleanup de rooms antigas é feito de forma esporádica (não em todo refresh)
@@ -5433,13 +5443,16 @@ function App() {
       return;
     }
 
+    // Limpa qualquer prompt anterior de senha
+    setPendingPrivateLobbyRoom(null);
+    setLobbyJoinPassword("");
+
     setJoiningLobbyRoomCode(normalizedCode);
-    setLobbyRoomsFeedback("Entrando na sala... (salas populares podem demorar alguns segundos devido à alta atividade simultânea)");
+    setLobbyRoomsFeedback("Verificando sala...");
 
     try {
       await ensureOnlineApi();
 
-      // Use live UID for the join identity (joinRoomDocument will also enforce it).
       const playerId = await (async () => {
         try {
           const api = onlineApiRef.current;
@@ -5454,14 +5467,32 @@ function App() {
 
       if (!room) {
         setLobbyRoomsFeedback("Sala não encontrada.");
+        setJoiningLobbyRoomCode("");
         return;
       }
 
       if (room.status !== "lobby") {
         setLobbyRoomsFeedback("Essa sala já começou.");
         await refreshLobbyRooms();
+        setJoiningLobbyRoomCode("");
         return;
       }
+
+      // Detecta se a sala foi criada com senha.
+      // Se sim, NÃO entra direto: abre o prompt de senha (popup inline) e guarda os dados.
+      const hasPassword = !!(room.config?.password && String(room.config.password).trim());
+      const isProtected = room.config?.isPrivate || hasPassword;
+
+      if (isProtected) {
+        setPendingPrivateLobbyRoom({ code: normalizedCode, room });
+        setLobbyJoinPassword("");
+        setLobbyRoomsFeedback("");
+        setJoiningLobbyRoomCode("");
+        return;
+      }
+
+      // Sala pública (sem senha): entra normalmente
+      setLobbyRoomsFeedback("Entrando na sala... (salas populares podem demorar alguns segundos devido à alta atividade simultânea)");
 
       const selectedFormation = getFormationById(onlineSetup.formationId);
       const participant = {
@@ -5474,7 +5505,6 @@ function App() {
         isReady: true,
       };
 
-      // Lock the exact id we used to join this room (used for ejection checks and heartbeats).
       myParticipantIdRef.current = playerId;
       localParticipantIdRef.current = playerId;
       setLocalParticipantId(playerId);
@@ -5500,6 +5530,89 @@ function App() {
     } finally {
       setJoiningLobbyRoomCode("");
     }
+  }
+
+  // Confirma entrada em sala protegida por senha (chamado do prompt que aparece na lista)
+  async function confirmJoinPrivateLobbyRoom() {
+    if (!pendingPrivateLobbyRoom) return;
+
+    const { code: normalizedCode, room } = pendingPrivateLobbyRoom;
+    const enteredPass = (lobbyJoinPassword || "").trim();
+    const correctPass = (room.config?.password || "").trim();
+
+    if (!enteredPass || enteredPass !== correctPass) {
+      setLobbyRoomsFeedback("Senha incorreta. Tente novamente.");
+      return;
+    }
+
+    if (!onlineSetup.teamName.trim()) {
+      setLobbyRoomsFeedback("Digite o nome do seu time antes de entrar.");
+      return;
+    }
+
+    setJoiningLobbyRoomCode(normalizedCode);
+    setLobbyRoomsFeedback("Entrando na sala... (salas populares podem demorar alguns segundos devido à alta atividade simultânea)");
+
+    try {
+      await ensureOnlineApi();
+
+      const playerId = await (async () => {
+        try {
+          const api = onlineApiRef.current;
+          if (api && typeof api.ensureAnonymousAuth === "function") {
+            return await api.ensureAnonymousAuth();
+          }
+        } catch {}
+        return localParticipantIdRef.current || localParticipantId;
+      })();
+
+      const selectedFormation = getFormationById(onlineSetup.formationId);
+      const participant = {
+        id: playerId,
+        playerName: onlineSetup.playerName.trim() || "Jogador",
+        teamName: onlineSetup.teamName.trim() || "Meu XI",
+        formationId: selectedFormation.id,
+        formationName: selectedFormation.name,
+        isHost: false,
+        isReady: true,
+      };
+
+      myParticipantIdRef.current = playerId;
+      localParticipantIdRef.current = playerId;
+      setLocalParticipantId(playerId);
+
+      await joinRoomDocument(normalizedCode, participant);
+      rememberActiveRoomCode(normalizedCode);
+      setSavedRoomCode(normalizedCode);
+      applyRemoteRoomState({
+        ...room,
+        participants: [...(room.participants || []), participant],
+        participantIds: [...(room.participantIds || []), playerId],
+      });
+
+      // Limpa o prompt de senha
+      setPendingPrivateLobbyRoom(null);
+      setLobbyJoinPassword("");
+      setScreen("online-lobby");
+    } catch (error) {
+      const message = error?.message || "Não foi possível entrar na sala.";
+      if (error?.code === "permission-denied" || /permission|insufficient|Missing or insufficient/i.test(message)) {
+        setLobbyRoomsFeedback(
+          "Erro de permissão. Verifique se o login anônimo está ativado no Firebase e se as regras do Firestore estão publicadas."
+        );
+      } else {
+        setLobbyRoomsFeedback(message);
+      }
+      // Mantém o prompt aberto para o usuário tentar de novo ou cancelar
+    } finally {
+      setJoiningLobbyRoomCode("");
+    }
+  }
+
+  function cancelPrivateLobbyPasswordPrompt() {
+    setPendingPrivateLobbyRoom(null);
+    setLobbyJoinPassword("");
+    setLobbyRoomsFeedback("");
   }
 
   function updateOnlineSetup(field, value) {
@@ -7066,7 +7179,60 @@ ${lineupText}`;
               </button>
             </div>
 
-            {lobbyRoomsFeedback ? (
+            {/* Prompt de senha (estilo "popup") para salas protegidas clicadas na lista */}
+            {pendingPrivateLobbyRoom && (
+              <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-5 shadow-[0_10px_30px_rgba(245,158,11,0.15)]">
+                <div className="flex items-start gap-3">
+                  <div className="text-2xl">🔒</div>
+                  <div className="flex-1">
+                    <p className="text-base font-black text-amber-950">
+                      Sala privada: {pendingPrivateLobbyRoom.room?.roomName || pendingPrivateLobbyRoom.code}
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold text-amber-900">
+                      Esta sala foi criada com senha. Digite a senha para poder entrar.
+                    </p>
+
+                    {lobbyRoomsFeedback && (
+                      <p className="mt-2 text-sm font-bold text-red-700">{lobbyRoomsFeedback}</p>
+                    )}
+
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <input
+                        type="password"
+                        value={lobbyJoinPassword}
+                        onChange={(event) => setLobbyJoinPassword(event.target.value)}
+                        placeholder="Digite a senha da sala"
+                        className="w-full rounded-2xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold outline-none focus:border-amber-500 sm:w-72"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            confirmJoinPrivateLobbyRoom().catch(console.error);
+                          }
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => confirmJoinPrivateLobbyRoom().catch(console.error)}
+                          disabled={!!joiningLobbyRoomCode || !lobbyJoinPassword.trim()}
+                          className="force-dark-text rounded-2xl bg-emerald-300 px-5 py-2.5 text-sm font-black text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-50"
+                        >
+                          {joiningLobbyRoomCode === pendingPrivateLobbyRoom.code ? "Entrando..." : "Entrar com senha"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelPrivateLobbyPasswordPrompt}
+                          className="rounded-2xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-black text-amber-950 transition hover:bg-amber-100"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {lobbyRoomsFeedback && !pendingPrivateLobbyRoom ? (
               <p className="mt-4 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
                 {lobbyRoomsFeedback}
               </p>
@@ -7084,13 +7250,25 @@ ${lineupText}`;
                         : "Normal"
                       : null;
 
+                  const isPrivateRoom = !!(room.config?.password && String(room.config.password).trim()) || room.config?.isPrivate;
+                  const isThisPending = pendingPrivateLobbyRoom?.code === room.code;
+
                   return (
                     <div
                       key={room.code}
-                      className="flex flex-col gap-4 rounded-[1.5rem] border border-slate-900/10 bg-white/80 p-4 sm:flex-row sm:items-center sm:justify-between"
+                      className={`flex flex-col gap-4 rounded-[1.5rem] border p-4 sm:flex-row sm:items-center sm:justify-between ${
+                        isThisPending
+                          ? "border-amber-400 bg-amber-50/60 ring-1 ring-amber-300"
+                          : "border-slate-900/10 bg-white/80"
+                      }`}
                     >
                       <div>
-                        <p className="text-lg font-black text-slate-950">{room.roomName || "Sala 38–0"}</p>
+                        <p className="text-lg font-black text-slate-950">
+                          {room.roomName || "Sala 38–0"}
+                          {isPrivateRoom && (
+                            <span className="ml-2 align-middle text-sm font-bold text-amber-600">🔒 Privada</span>
+                          )}
+                        </p>
                         <p className="mt-1 text-sm font-bold text-slate-600">
                           {modeLabel}
                           {difficultyLabel ? ` · ${difficultyLabel}` : ""} · Código {room.code}
@@ -7104,10 +7282,14 @@ ${lineupText}`;
                         <button
                           type="button"
                           onClick={() => joinLobbyRoom(room.code).catch(console.error)}
-                          disabled={joiningLobbyRoomCode === room.code}
+                          disabled={joiningLobbyRoomCode === room.code || isThisPending}
                           className="force-dark-text rounded-2xl bg-emerald-300 px-4 py-2 text-sm font-black text-emerald-950 transition hover:bg-emerald-200 disabled:opacity-60"
                         >
-                          {joiningLobbyRoomCode === room.code ? "Entrando..." : "Entrar"}
+                          {joiningLobbyRoomCode === room.code
+                            ? "Entrando..."
+                            : isPrivateRoom
+                            ? "Entrar (senha)"
+                            : "Entrar"}
                         </button>
                       </div>
                     </div>
