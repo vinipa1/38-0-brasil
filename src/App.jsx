@@ -771,7 +771,9 @@ function KitBallIcon({ clubId, overall = null }) {
     >
       <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.42),transparent_36%)]" />
       {overall ? (
-        <span className="relative flex h-6 min-w-6 items-center justify-center rounded-full bg-white/92 px-1.5 text-[10px] font-black leading-none text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,0.22)] ring-1 ring-black/10 sm:h-7 sm:min-w-7 sm:text-xs">
+        <span
+          className="overall-badge-number relative flex h-6 min-w-6 items-center justify-center rounded-full bg-white/92 px-1.5 text-[10px] font-black leading-none text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,0.22)] ring-1 ring-black/10 sm:h-7 sm:min-w-7 sm:text-xs"
+        >
           {overall}
         </span>
       ) : (
@@ -1004,6 +1006,16 @@ function ThemeStyles() {
         color: #0f172a !important;
       }
 
+      .theme-light .overall-badge-number {
+        color: #0f172a !important;
+        text-shadow: none !important;
+      }
+
+      .theme-dark .overall-badge-number {
+        color: #ffffff !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 1px rgba(0,0,0,0.95) !important;
+      }
+
       .theme-dark .force-dark-text,
       .theme-dark .force-dark-text * {
         color: #0f172a !important;
@@ -1043,6 +1055,20 @@ function ThemeStyles() {
       .theme-dark .force-dark-text .event-minute-badge,
       .theme-dark .force-dark-text .leader-total-badge {
         color: #ffffff !important;
+      }
+
+      .theme-dark .champion-modal-surface {
+        background: #f7f0df !important;
+        color: #0f172a !important;
+      }
+
+      .theme-dark .champion-modal-surface [class*="bg-white/"],
+      .theme-dark .champion-modal-surface [class*="bg-white"] {
+        background-color: rgba(255, 255, 255, 0.9) !important;
+      }
+
+      .theme-dark .champion-modal-surface [class*="bg-slate-50"] {
+        background-color: #f8fafc !important;
       }
 
 
@@ -1316,13 +1342,13 @@ function ThemeStyles() {
       .theme-dark .highlight-outline-card {
         background: #10b981 !important;
         background-color: #10b981 !important;
-        color: #ffffff !important;
+        color: #0f172a !important;
         border-color: rgba(52, 211, 153, 0.72) !important;
         box-shadow: 0 12px 28px rgba(16, 185, 129, 0.16) !important;
       }
 
       .theme-dark .highlight-outline-card * {
-        color: #ffffff !important;
+        color: #0f172a !important;
       }
 
       .theme-dark .highlight-outline-card .highlight-dark-pill,
@@ -1334,9 +1360,9 @@ function ThemeStyles() {
 
       .theme-dark .highlight-outline-card .highlight-soft-pill,
       .theme-dark .highlight-outline-card [class*="bg-emerald"] {
-        background: rgba(255, 255, 255, 0.18) !important;
-        background-color: rgba(255, 255, 255, 0.18) !important;
-        color: #ffffff !important;
+        background: rgba(255, 255, 255, 0.28) !important;
+        background-color: rgba(255, 255, 255, 0.28) !important;
+        color: #064e3b !important;
       }
 
     `}</style>
@@ -2622,7 +2648,7 @@ function OnlineTeamSummaryStats({ summary, revealValues = true, compact = false 
           <div
             key={item.label}
             className={`rounded-2xl text-center ${compact ? "px-2 py-2" : "px-3 py-3"} ${
-              isOverall ? "force-dark-text bg-emerald-300 text-emerald-950" : "bg-slate-50"
+              isOverall ? "force-dark-text bg-emerald-300 text-emerald-950" : "force-dark-text bg-slate-50 text-slate-950"
             }`}
           >
             <p
@@ -2722,7 +2748,7 @@ function StandingLegend() {
       {items.map((item) => (
         <span
           key={item.label}
-          className="force-dark-text inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 ring-1 ring-slate-900/5"
+          className="force-white-text inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 ring-1 ring-slate-900/5"
         >
           <span className={`h-2 w-2 rounded-full ${item.className}`} />
           {item.label}
@@ -2789,13 +2815,6 @@ function LeagueStandingsTable({
                       {isHighlighted && (
                         <span className="highlight-soft-pill shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-emerald-200">
                           Seu
-                        </span>
-                      )}
-                      {zone.key !== "meio" && (
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ring-1 ${
-                          isHighlighted ? "highlight-soft-pill bg-emerald-100 text-emerald-700 ring-emerald-200" : zone.pillClass
-                        }`}>
-                          {zone.label}
                         </span>
                       )}
                     </div>
@@ -2868,11 +2887,6 @@ function LeagueStandingsTable({
                           Seu
                         </span>
                       )}
-                      {zone.key !== "meio" && (
-                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ring-1 ${zone.pillClass}`}>
-                          {zone.label}
-                        </span>
-                      )}
                     </div>
                     {team.isOnlineHumanTeam && team.playerName && (
                       <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">
@@ -2917,11 +2931,6 @@ function LeagueStandingsTable({
                       <p className="classification-team-name truncate text-base font-black text-slate-950">{team.label}</p>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1.5">
-                      {zone.key !== "meio" && (
-                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ring-1 ${zone.pillClass}`}>
-                          {zone.label}
-                        </span>
-                      )}
                       {isHighlighted && (
                         <span className="highlight-soft-pill rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-700">
                           Seu time
@@ -3659,6 +3668,18 @@ function getRecentLiveEvents(match, minute = 0, limit = 3) {
     .slice(0, limit);
 }
 
+function getGoalEventTeamBadgeClasses(event) {
+  if (event?.side === "home") {
+    return "bg-blue-100 text-blue-800";
+  }
+
+  if (event?.side === "away") {
+    return "bg-emerald-100 text-emerald-800";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
 function normalizeSoloMatchEvent(event, match) {
   if (!event) return null;
 
@@ -3784,7 +3805,7 @@ function LeaderboardPanel({ title, leaders, valueLabel = "gols", emptyMessage, l
               key={`${title}-${leader.name}-${leader.team}-${index}`}
               className={`highlight-outline-card grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl border border-emerald-400/55 bg-white text-slate-950 shadow-[0_10px_22px_rgba(16,185,129,0.10)] ${compact ? "px-2.5 py-2" : "px-3 py-2"}`}
             >
-              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${index === 0 ? "bg-yellow-300 text-yellow-950" : "bg-white/90 text-slate-700"}`}>
+              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${index === 0 ? "bg-yellow-300 text-yellow-950" : "force-white-text bg-white/90 text-slate-700"}`}>
                 {index + 1}
               </span>
               <div className="min-w-0">
@@ -3797,7 +3818,7 @@ function LeaderboardPanel({ title, leaders, valueLabel = "gols", emptyMessage, l
             </div>
           ))
         ) : (
-          <p className="force-dark-text rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
+          <p className="force-white-text rounded-2xl bg-white/80 px-4 py-4 text-sm font-bold text-slate-500">
             {emptyMessage || `Os líderes de ${valueLabel} aparecem depois dos primeiros lances.`}
           </p>
         )}
@@ -7461,7 +7482,7 @@ ${lineupText}`;
                         }
                         className={`rounded-2xl border px-4 py-3 text-left transition ${
                           onlineSetup.onlineMode === value
-                            ? "border-emerald-500 bg-emerald-300/25"
+                            ? "selected-green-card border-emerald-500"
                             : "border-slate-900/10 bg-white/60 hover:bg-white"
                         }`}
                       >
@@ -7489,7 +7510,7 @@ ${lineupText}`;
                         onClick={() => updateOnlineSetup("draftType", value)}
                         className={`rounded-2xl border px-4 py-3 text-left transition ${
                           onlineSetup.draftType === value
-                            ? "border-emerald-500 bg-emerald-300/25"
+                            ? "selected-green-card border-emerald-500"
                             : "border-slate-900/10 bg-white/60 hover:bg-white"
                         }`}
                       >
@@ -7572,11 +7593,11 @@ ${lineupText}`;
                       </select>
                     </label>
 
-                    <div className="rounded-2xl bg-emerald-300/15 p-4">
+                    <div className="selected-green-card rounded-2xl p-4">
                       <p className="text-sm font-black text-emerald-800">
                         Sorteio realmente aleatório
                       </p>
-                      <p className="mt-1 text-xs font-bold leading-relaxed text-slate-600">
+                      <p className="mt-1 text-xs font-bold leading-relaxed text-emerald-900/80">
                         Os cards vêm misturados da base: craques, médios e nomes mais fracos.
                         Quem for escolhido sai da pool da sala.
                       </p>
@@ -7601,7 +7622,7 @@ ${lineupText}`;
                         onClick={() => updateOnlineSetup("duelFormat", option.value)}
                         className={`rounded-2xl border px-4 py-3 text-left transition ${
                           onlineSetup.duelFormat === option.value
-                            ? "border-emerald-500 bg-emerald-300/25"
+                            ? "selected-green-card border-emerald-500"
                             : "border-slate-900/10 bg-white/60 hover:bg-white"
                         }`}
                       >
@@ -8745,7 +8766,7 @@ ${lineupText}`;
                           className={`rounded-xl px-2 py-2 ${
                             label === "GERAL"
                               ? "force-dark-text bg-emerald-300 text-emerald-950"
-                              : "bg-slate-100 text-slate-950"
+                              : "force-dark-text bg-slate-100 text-slate-950"
                           }`}
                         >
                           <p className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -8826,10 +8847,13 @@ ${lineupText}`;
                   <div className="grid gap-2">
                     {duelEvents.map((event) => (
                       <div key={event.id} className="rounded-2xl bg-white/10 px-3 py-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-base">{event.icon}</span>
                           <span className="event-minute-badge rounded-full bg-emerald-3000 px-2 py-0.5 text-[10px] font-black text-white">
                             {event.minute}'
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${getGoalEventTeamBadgeClasses(event)}`}>
+                            {event.teamLabel || (event.side === "home" ? duelMainMatch.home : duelMainMatch.away)}
                           </span>
                           <p className="truncate text-sm font-black">{event.title}</p>
                         </div>
@@ -8934,7 +8958,7 @@ ${lineupText}`;
 
         {onlineChampion && !dismissedOnlineChampionModal && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/65 px-4 py-6 backdrop-blur-sm">
-            <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-yellow-300/40 bg-[#f7f0df] p-6 text-center shadow-[0_30px_90px_rgba(15,23,42,0.35)] sm:p-8">
+            <div className="champion-modal-surface force-dark-text relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-yellow-300/40 bg-[#f7f0df] p-6 text-center shadow-[0_30px_90px_rgba(15,23,42,0.35)] sm:p-8">
               <button
                 type="button"
                 onClick={() => setDismissedOnlineChampionModal(true)}
@@ -9150,7 +9174,7 @@ ${lineupText}`;
                   <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                       <p className="truncate text-right text-lg font-black sm:text-2xl">{liveMainMatch.home}</p>
-                      <p className="leader-row-readable rounded-2xl bg-white px-4 py-2 text-2xl font-black text-slate-950 sm:text-3xl">
+                      <p className="force-white-text rounded-2xl bg-white px-4 py-2 text-2xl font-black text-slate-950 sm:text-3xl">
                         {liveMainScore.homeGoals} x {liveMainScore.awayGoals}
                       </p>
                       <p className="truncate text-left text-lg font-black sm:text-2xl">{liveMainMatch.away}</p>
@@ -9164,10 +9188,13 @@ ${lineupText}`;
                         <div className="grid gap-2">
                           {liveMainEvents.map((event) => (
                             <div key={event.id} className="rounded-2xl bg-white/10 px-3 py-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-base">{event.icon}</span>
                                 <span className="event-minute-badge rounded-full bg-emerald-3000 px-2 py-0.5 text-[10px] font-black text-white">
                                   {event.minute}'
+                                </span>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${getGoalEventTeamBadgeClasses(event)}`}>
+                                  {event.teamLabel || (event.side === "home" ? liveMainMatch.home : liveMainMatch.away)}
                                 </span>
                                 <p className="truncate text-sm font-black">{event.title}</p>
                               </div>
@@ -10578,7 +10605,25 @@ ${lineupText}`;
           fazer a campanha perfeita no Brasileirão.
         </p>
 
-        <div className="mt-10 flex w-full max-w-3xl flex-col items-center gap-4">
+        <div className="mt-6 w-full max-w-2xl rounded-3xl border border-emerald-500/25 bg-white/75 px-5 py-4 text-sm font-bold leading-relaxed text-slate-700 shadow-[0_12px_32px_rgba(15,23,42,0.06)] backdrop-blur">
+          <p>
+            <span className="font-black uppercase tracking-[0.12em] text-emerald-700">
+              Aviso importante:
+            </span>{" "}
+            a partir do dia 14, o único domínio oficial do site será{" "}
+            <a
+              href="https://38-0-brasil.pages.dev"
+              target="_blank"
+              rel="noreferrer"
+              className="force-dark-text inline-flex rounded-full bg-emerald-300 px-2.5 py-1 text-xs font-black text-emerald-950 underline-offset-4 transition hover:bg-emerald-200 sm:text-sm"
+            >
+              38-0-brasil.pages.dev
+            </a>{" "}
+            devido aos limites de uso do Vercel.
+          </p>
+        </div>
+
+        <div className="mt-8 flex w-full max-w-3xl flex-col items-center gap-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
             <button
               type="button"
