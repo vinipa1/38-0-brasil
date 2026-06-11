@@ -199,7 +199,7 @@ export async function createRoomDocument(room) {
 
   // Build a clean payload instead of spreading the entire client room object.
   // This avoids sending extra setup state that could interfere with rule evaluation.
-  const cleanConfig = room.config ? { ...room.config } : {};
+  const cleanConfig = room.config ? removeUndefinedDeep({ ...room.config }) : {};
   if (cleanConfig.onlineMode === "duel") {
     cleanConfig.maxPlayers = 2;
   } else {

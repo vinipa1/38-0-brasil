@@ -5563,6 +5563,15 @@ function App() {
 
     const roomCode = createRoomCode();
 
+    // Prevent creating private rooms without a password (would be unusable)
+    if (onlineSetup.isPrivate) {
+      const pw = (onlineSetup.roomPassword || "").trim();
+      if (!pw) {
+        window.alert("Para criar uma sala privada, defina uma senha.");
+        return;
+      }
+    }
+
     const hostParticipant = {
       id: playerId,
       playerName: onlineSetup.playerName.trim() || "Jogador",
@@ -5573,24 +5582,35 @@ function App() {
       isReady: true,
     };
 
+    // Build a clean persisted config. Never include `undefined` values (Firestore rejects them)
+    // and do not leak the transient UI field `roomPassword`.
+    const baseConfig = {
+      ...onlineSetup,
+      roomName: onlineSetup.roomName.trim() || "Sala 38–0",
+      teamName: onlineSetup.teamName.trim() || "Meu XI",
+      playerName: onlineSetup.playerName.trim() || "Jogador",
+      formationId: selectedOnlineFormation.id,
+      maxPlayers: onlineSetup.onlineMode === "duel" ? 2 : 20,
+      cardsPerTurn: Number(onlineSetup.cardsPerTurn),
+      picksPerTurn: Number(onlineSetup.picksPerTurn),
+      isPrivate: !!onlineSetup.isPrivate,
+    };
+
+    if (baseConfig.isPrivate) {
+      const pw = (onlineSetup.roomPassword || "").trim();
+      if (pw) {
+        baseConfig.password = pw;
+      }
+    }
+    delete baseConfig.roomPassword;
+
     const room = {
       id: roomCode,
       code: roomCode,
       roomName: onlineSetup.roomName.trim() || "Sala 38–0",
       status: "lobby",
       hostId: playerId,
-      config: {
-        ...onlineSetup,
-        roomName: onlineSetup.roomName.trim() || "Sala 38–0",
-        teamName: onlineSetup.teamName.trim() || "Meu XI",
-        playerName: onlineSetup.playerName.trim() || "Jogador",
-        formationId: selectedOnlineFormation.id,
-        maxPlayers: onlineSetup.onlineMode === "duel" ? 2 : 20,
-        cardsPerTurn: Number(onlineSetup.cardsPerTurn),
-        picksPerTurn: Number(onlineSetup.picksPerTurn),
-        isPrivate: !!onlineSetup.isPrivate,
-        password: onlineSetup.isPrivate ? (onlineSetup.roomPassword || "").trim() : undefined,
-      },
+      config: baseConfig,
       participants: [hostParticipant],
       participantIds: [playerId],
       draftOrder: [],
