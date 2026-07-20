@@ -27,6 +27,7 @@ import { getClubById } from "./data/clubs";
 import { loadOnlineRoom } from "./services/loadOnlineRoom";
 import {
   clearActiveRoomCode,
+  forgetRememberedRoom,
   getRememberedRoomCode,
   mapRoomStatusToScreen,
   rememberActiveRoomCode,
@@ -931,6 +932,151 @@ function TacticalPitch({
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function getSeasonRatingBadgeClasses(rating) {
+  if (rating === null || rating === undefined || rating === "" || !Number.isFinite(Number(rating))) {
+    return "bg-slate-400 text-white";
+  }
+
+  const value = Number(rating);
+  if (value < 6) return "bg-red-600 text-white";
+  if (value < 6.5) return "bg-orange-500 text-white";
+  if (value < 7) return "bg-yellow-400 text-slate-950";
+  if (value < 8) return "bg-emerald-500 text-white";
+  if (value < 9) return "bg-cyan-500 text-white";
+  return "bg-blue-600 text-white";
+}
+
+function formatSeasonRating(rating) {
+  if (rating === null || rating === undefined || rating === "") return "—";
+  return Number.isFinite(Number(rating)) ? Number(rating).toFixed(1) : "—";
+}
+
+function getOnlineTeamPitchStats({ leagueResult, team, liveRound, liveMinute = 0 }) {
+  if (!team?.lineup?.length) return {};
+
+  const storedTeamStats = leagueResult?.playerStats?.[team.id];
+  const storedPlayers = storedTeamStats?.players || [];
+  const scorerLeaders = leagueResult?.leaderboards?.scorers || [];
+  const assistantLeaders = leagueResult?.leaderboards?.assistants || [];
+  const liveMatch = (liveRound?.matches || []).find(
+    (match) => match.homeTeam?.id === team.id || match.awayTeam?.id === team.id
+  );
+  const liveEvents = (liveMatch?.events || []).filter(
+    (event) => event.type === "goal" && Number(event.minute || 0) <= Number(liveMinute || 0)
+  );
+
+  return Object.fromEntries(
+    team.lineup.map((lineupItem) => {
+      const player = lineupItem.player || {};
+      const stored = storedPlayers.find(
+        (item) => item.playerId === player.id || item.name === player.name
+      );
+      const fallbackGoals = scorerLeaders.find(
+        (item) => item.name === player.name && item.team === team.label
+      )?.total || 0;
+      const fallbackAssists = assistantLeaders.find(
+        (item) => item.name === player.name && item.team === team.label
+      )?.total || 0;
+      const liveGoals = liveEvents.filter(
+        (event) => event.teamId === team.id &&
+          (event.playerId === player.id || (!event.playerId && event.playerName === player.name))
+      ).length;
+      const liveAssists = liveEvents.filter(
+        (event) => event.teamId === team.id &&
+          (event.assistId === player.id || (!event.assistId && event.assistName === player.name))
+      ).length;
+
+      return [
+        player.id,
+        {
+          goals: Number(stored?.goals ?? fallbackGoals) + liveGoals,
+          assists: Number(stored?.assists ?? fallbackAssists) + liveAssists,
+          averageRating: stored?.averageRating ?? null,
+          lastRating: stored?.lastRating ?? null,
+          matches: Number(stored?.matches || 0),
+        },
+      ];
+    })
+  );
+}
+
+function OnlineSeasonPitch({ formation, lineup, playerStats }) {
+  return (
+    <div
+      className="relative min-h-[430px] overflow-hidden rounded-[1.5rem] border border-slate-900/10 p-3 sm:min-h-[560px] sm:rounded-[2rem] sm:p-4"
+      style={{
+        background:
+          "repeating-linear-gradient(180deg, #2f8556 0 54px, #2b7a4d 54px 108px)",
+      }}
+    >
+      <div className="absolute inset-3 rounded-[1.25rem] border-2 border-white/45 sm:inset-4 sm:rounded-[1.5rem]" />
+
+      <div className="absolute left-1/2 top-3 h-[10%] w-[26%] -translate-x-1/2 border-2 border-white/45 border-t-0 sm:top-4" />
+      <div className="absolute left-1/2 top-3 h-[4.5%] w-[11%] -translate-x-1/2 border-2 border-white/45 border-t-0 sm:top-4" />
+      <div className="absolute left-1/2 top-[12.5%] h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/55" />
+      <div
+        className="absolute left-1/2 top-[9.3%] h-[8%] w-[18%] -translate-x-1/2 rounded-full border-2 border-white/45"
+        style={{ clipPath: "inset(50% 0 0 0)" }}
+      />
+
+      <div className="absolute bottom-3 left-1/2 h-[10%] w-[26%] -translate-x-1/2 border-2 border-white/45 border-b-0 sm:bottom-4" />
+      <div className="absolute bottom-3 left-1/2 h-[4.5%] w-[11%] -translate-x-1/2 border-2 border-white/45 border-b-0 sm:bottom-4" />
+      <div className="absolute bottom-[12.5%] left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/55" />
+      <div
+        className="absolute bottom-[9.3%] left-1/2 h-[8%] w-[18%] -translate-x-1/2 rounded-full border-2 border-white/45"
+        style={{ clipPath: "inset(0 0 50% 0)" }}
+      />
+
+      <div className="absolute left-3 right-3 top-1/2 border-t-2 border-white/45 sm:left-4 sm:right-4" />
+      <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/45 sm:h-36 sm:w-36" />
+      <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/55" />
+
+      <div className="absolute left-3 top-3 h-4 w-4 rounded-tl-[999px] border-l-2 border-t-2 border-white/45 sm:left-4 sm:top-4" />
+      <div className="absolute right-3 top-3 h-4 w-4 rounded-tr-[999px] border-r-2 border-t-2 border-white/45 sm:right-4 sm:top-4" />
+      <div className="absolute bottom-3 left-3 h-4 w-4 rounded-bl-[999px] border-b-2 border-l-2 border-white/45 sm:bottom-4 sm:left-4" />
+      <div className="absolute bottom-3 right-3 h-4 w-4 rounded-br-[999px] border-b-2 border-r-2 border-white/45 sm:bottom-4 sm:right-4" />
+
+      {formation.slots.map((slot, index) => {
+        const lineupItem = lineup.find((item) => item.slotIndex === index);
+        if (!lineupItem?.player) return null;
+
+        const player = lineupItem.player;
+        const stats = playerStats[player.id] || {};
+        const displayedY = Math.min(Number(slot.y || 50), 84);
+
+        return (
+          <div
+            key={`${formation.id}-${slot.id}-${player.id}`}
+            className="absolute z-10 flex w-[78px] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center sm:w-28 sm:gap-1"
+            style={{ left: `${slot.x}%`, top: `${displayedY}%` }}
+            title={`${player.name} · ${stats.goals || 0} gols · ${stats.assists || 0} assistências · média ${formatSeasonRating(stats.averageRating)}`}
+          >
+            <KitBallIcon
+              clubId={lineupItem.team?.clubId}
+              overall={player.ovr}
+            />
+
+            <div className="flex max-w-full items-center justify-center gap-1">
+              <span className="max-w-[57px] truncate rounded-md bg-white px-1 py-[3px] text-[7px] font-black leading-none text-slate-950 shadow-[0_4px_10px_rgba(15,23,42,0.18)] sm:max-w-[86px] sm:px-1.5 sm:text-[10px]">
+                {player.name}
+              </span>
+              <span
+                className={`min-w-[23px] rounded px-1 py-[3px] text-[7px] font-black leading-none shadow-[0_4px_10px_rgba(15,23,42,0.18)] sm:min-w-[30px] sm:text-[10px] ${getSeasonRatingBadgeClasses(stats.averageRating)}`}
+              >
+                {formatSeasonRating(stats.averageRating)}
+              </span>
+            </div>
+
+            <div className="rounded-md bg-slate-950/88 px-1.5 py-[3px] text-[7px] font-black leading-none text-white shadow-[0_4px_10px_rgba(15,23,42,0.22)] sm:px-2 sm:text-[10px]">
+              {stats.goals || 0} ⚽&nbsp;&nbsp;{stats.assists || 0} 🅰️
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2251,13 +2397,23 @@ function getOnlineLiveSpeedInterval(speed) {
   return ONLINE_LIVE_SPEED_OPTIONS.find((option) => option.value === speed)?.interval || 95;
 }
 
-function getLiveMinuteFromStartedAt(roundStartedAt, speed, maxMinute = 90) {
-  if (!roundStartedAt) return 0;
+function getLiveMinuteFromStartedAt(
+  roundStartedAt,
+  speed,
+  maxMinute = 90,
+  serverClockOffset = 0
+) {
+  const startedAt = Number(roundStartedAt);
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return 0;
 
   const interval = getOnlineLiveSpeedInterval(speed);
-  const elapsed = Date.now() - roundStartedAt;
+  const safeOffset = Number.isFinite(Number(serverClockOffset))
+    ? Number(serverClockOffset)
+    : 0;
+  const serverSyncedNow = Date.now() + safeOffset;
+  const elapsed = serverSyncedNow - startedAt;
 
-  return Math.min(maxMinute, Math.floor(elapsed / interval));
+  return Math.max(0, Math.min(maxMinute, Math.floor(elapsed / interval)));
 }
 
 
@@ -2990,6 +3146,24 @@ function createOnlineSimulationTeam(participant, lineup) {
   });
 }
 
+function buildOnlineLeagueDatabasePayload(quantity) {
+  return getRandomBrazilianLeagueOpponents(quantity).map((team) => ({
+    id: team.id,
+    clubId: team.clubId,
+    club: team.club,
+    label: team.label,
+    era: team.era,
+    type: team.type,
+    strength: team.strength,
+    players: (team.players || []).map((player) => ({
+      id: player.id,
+      name: player.name,
+      ovr: player.ovr,
+      positions: player.positions || [],
+    })),
+  }));
+}
+
 function simulateOnlineBrazilianLeague(room, draftOrder, lineupsMap) {
   const humanTeams = draftOrder.map((participant) =>
     createOnlineSimulationTeam(participant, lineupsMap[participant.id] || [])
@@ -3096,7 +3270,9 @@ function slimLeagueEventForFirestore(event) {
     teamLabel: event.teamLabel,
     title: event.title,
     description: event.description,
+    playerId: event.playerId || null,
     playerName: event.playerName || null,
+    assistId: event.assistId || null,
     assistName: event.assistName || null,
   };
 }
@@ -3179,6 +3355,38 @@ function getOnlineScreenForRoom(room) {
   return mapRoomStatusToScreen(room?.status);
 }
 
+function getLiveMinuteFromRoomSnapshot(room, liveState, maxMinute = 90) {
+  if (!liveState) return 0;
+
+  const speed = room?.liveSpeed || "normal";
+  const interval = getOnlineLiveSpeedInterval(speed);
+  const confirmedMinute = Math.max(
+    0,
+    Math.min(maxMinute, Number(liveState.minute || 0))
+  );
+
+  const fromServerClock = liveState.roundStartedAt
+    ? getLiveMinuteFromStartedAt(
+        liveState.roundStartedAt,
+        speed,
+        maxMinute,
+        room?._serverClockOffset || 0
+      )
+    : confirmedMinute;
+
+  const receivedAt = Number(room?._receivedAt);
+  const elapsedSinceSnapshot = Number.isFinite(receivedAt)
+    ? Math.max(0, Date.now() - receivedAt)
+    : 0;
+  const fromSnapshotClock = confirmedMinute + Math.floor(elapsedSinceSnapshot / interval);
+
+  return Math.max(
+    confirmedMinute,
+    Math.min(maxMinute, fromServerClock),
+    Math.min(maxMinute, fromSnapshotClock)
+  );
+}
+
 function buildOnlineLiveRoundFromRoom(room) {
   if (room?.status !== "league" || !room.liveRound) return null;
 
@@ -3187,14 +3395,9 @@ function buildOnlineLiveRoundFromRoom(room) {
 
   if (!round) return null;
 
-  const speed = room.liveSpeed || "normal";
-  const minute = room.liveRound.roundStartedAt
-    ? getLiveMinuteFromStartedAt(room.liveRound.roundStartedAt, speed)
-    : room.liveRound.minute || 0;
-
   return {
     round,
-    minute,
+    minute: getLiveMinuteFromRoomSnapshot(room, room.liveRound, 90),
     roundStartedAt: room.liveRound.roundStartedAt || null,
   };
 }
@@ -3205,16 +3408,12 @@ function buildOnlineDuelLiveFromRoom(room) {
   const match = room.duelResult.matches[room.duelLive.matchIndex];
   if (!match) return null;
 
-  const speed = room.liveSpeed || "normal";
   const endMinute = getDuelLiveEndMinute(match);
-  const minute = room.duelLive.roundStartedAt
-    ? getLiveMinuteFromStartedAt(room.duelLive.roundStartedAt, speed, endMinute)
-    : room.duelLive.minute || 0;
 
   return {
     match,
     matchIndex: room.duelLive.matchIndex,
-    minute,
+    minute: getLiveMinuteFromRoomSnapshot(room, room.duelLive, endMinute),
     roundStartedAt: room.duelLive.roundStartedAt || null,
     isFinished: Boolean(room.duelLive.isFinished),
   };
@@ -3370,7 +3569,9 @@ function generateOnlineMatchEvents(match) {
       teamLabel: team.label,
       title: `Gol de ${scorer?.name || team.label}`,
       description: getOnlineGoalDescription(scorer, assist),
+      playerId: scorer?.id || null,
       playerName: scorer?.name || null,
+      assistId: assist?.id || null,
       assistName: assist?.name || null,
     });
   }
@@ -3396,7 +3597,9 @@ function createOnlineExtraGoalEvent(match, side, minute, index) {
     teamLabel: team.label,
     title: `Gol de ${scorer?.name || team.label} na prorrogação`,
     description: getOnlineGoalDescription(scorer, assist),
+    playerId: scorer?.id || null,
     playerName: scorer?.name || null,
+    assistId: assist?.id || null,
     assistName: assist?.name || null,
     phase: "extraTime",
   };
@@ -3651,8 +3854,23 @@ function PenaltyShootoutPanel({ match, minute }) {
 }
 
 function getLiveMatchScore(match, minute = 0) {
-  const revealedGoals = (match.events || []).filter(
-    (event) => event.type === "goal" && event.minute <= minute
+  // No Brasileirão controlado pelo servidor, homeGoals/awayGoals já representam
+  // somente os gols liberados até agora. Usar esses valores evita que diferença
+  // de relógio do dispositivo esconda um gol que o servidor já revelou.
+  if (
+    match?.isLive &&
+    Number.isFinite(Number(match.homeGoals)) &&
+    Number.isFinite(Number(match.awayGoals))
+  ) {
+    return {
+      homeGoals: Math.max(0, Number(match.homeGoals)),
+      awayGoals: Math.max(0, Number(match.awayGoals)),
+    };
+  }
+
+  const safeMinute = Math.max(0, Number(minute || 0));
+  const revealedGoals = (match?.events || []).filter(
+    (event) => event.type === "goal" && event.minute <= safeMinute
   );
 
   return {
@@ -3662,8 +3880,14 @@ function getLiveMatchScore(match, minute = 0) {
 }
 
 function getRecentLiveEvents(match, minute = 0, limit = 3) {
-  return (match.events || [])
-    .filter((event) => event.type === "goal" && event.minute <= minute)
+  const safeMinute = Math.max(0, Number(minute || 0));
+
+  return (match?.events || [])
+    .filter(
+      (event) =>
+        event.type === "goal" &&
+        (match?.isLive || event.minute <= safeMinute)
+    )
     .sort((a, b) => b.minute - a.minute)
     .slice(0, limit);
 }
@@ -3773,21 +3997,50 @@ function buildLeaderboardsFromMatches(matches = []) {
   };
 }
 
-function getLeagueLeaderboards({ rounds = [], revealedRounds = 0, liveRound = null, liveMinute = 0 }) {
+function getLeagueLeaderboards({
+  rounds = [],
+  revealedRounds = 0,
+  liveRound = null,
+  liveMinute = 0,
+  baseLeaderboards = null,
+}) {
   const completedMatches = rounds
     .slice(0, revealedRounds)
     .flatMap((round) => round.matches || []);
 
+  const completed = baseLeaderboards || buildLeaderboardsFromMatches(completedMatches);
   const liveMatches = liveRound
     ? (liveRound.matches || []).map((match) => ({
         ...match,
-        events: (match.events || []).filter(
-          (event) => event.type === "goal" && event.minute <= liveMinute
-        ),
+        // O servidor nunca envia eventos futuros. Em partidas server-authoritative,
+        // tudo que chegou já pode entrar imediatamente na artilharia/assistências.
+        events: match.isLive
+          ? (match.events || []).filter((event) => event.type === "goal")
+          : (match.events || []).filter(
+              (event) => event.type === "goal" && event.minute <= liveMinute
+            ),
       }))
     : [];
+  const live = buildLeaderboardsFromMatches(liveMatches);
 
-  return buildLeaderboardsFromMatches([...completedMatches, ...liveMatches]);
+  const merge = (baseItems = [], liveItems = []) => {
+    const map = new Map();
+    [...baseItems, ...liveItems].forEach((item) => {
+      const key = `${item.name}__${item.team}`;
+      const current = map.get(key) || { name: item.name, team: item.team, total: 0 };
+      current.total += item.total || 0;
+      map.set(key, current);
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return a.name.localeCompare(b.name);
+    });
+  };
+
+  return {
+    scorers: merge(completed.scorers, live.scorers),
+    assistants: merge(completed.assistants, live.assistants),
+  };
 }
 
 function LeaderboardPanel({ title, leaders, valueLabel = "gols", emptyMessage, limit = 10, compact = false }) {
@@ -4317,6 +4570,7 @@ function App() {
   const [onlineDuelLive, setOnlineDuelLive] = useState(null);
   const [dismissedOnlineChampionModal, setDismissedOnlineChampionModal] = useState(false);
   const [isStartingOnlineLeague, setIsStartingOnlineLeague] = useState(false);
+  const [onlinePitchTeamId, setOnlinePitchTeamId] = useState("");
   const [localParticipantId, setLocalParticipantId] = useState("");
   const [isCreatingOnlineRoom, setIsCreatingOnlineRoom] = useState(false);
   const [isJoiningOnlineRoom, setIsJoiningOnlineRoom] = useState(false);
@@ -4333,6 +4587,8 @@ function App() {
   const [pendingPrivateLobbyRoom, setPendingPrivateLobbyRoom] = useState(null);
   const [lobbyJoinPassword, setLobbyJoinPassword] = useState("");
   const onlineRoomRef = useRef(null);
+  const onlineRoomRevisionRef = useRef(0);
+  const autoResumeAttemptedRef = useRef("");
   const onlineApiRef = useRef(null);
   const localParticipantIdRef = useRef("");
   const myParticipantIdRef = useRef(""); // the exact participant id we used when we successfully joined/created this room
@@ -4341,6 +4597,7 @@ function App() {
   const [isOnlineApiLoading, setIsOnlineApiLoading] = useState(false);
   const [isOnlineApiReady, setIsOnlineApiReady] = useState(false);
   const [onlineApiError, setOnlineApiError] = useState("");
+  const [onlineConnectionStatus, setOnlineConnectionStatus] = useState("idle");
   const [justBecameHost, setJustBecameHost] = useState(false); // feedback leve quando vira host por promoção automática
 
   async function ensureOnlineApi() {
@@ -4422,8 +4679,8 @@ function App() {
     return (await ensureOnlineApi()).createRoomDocument(room);
   }
 
-  async function joinRoomDocument(code, participant) {
-    return (await ensureOnlineApi()).joinRoomDocument(code, participant);
+  async function joinRoomDocument(code, participant, options = {}) {
+    return (await ensureOnlineApi()).joinRoomDocument(code, participant, options);
   }
 
   async function leaveRoomDocument(code, participantId) {
@@ -4440,6 +4697,36 @@ function App() {
 
   async function clearOnlineLeagueResult(code) {
     return (await ensureOnlineApi()).clearOnlineLeagueResult(code);
+  }
+
+  async function startOnlineLeagueSimulation(code, payload) {
+    const api = await ensureOnlineApi();
+    if (!api.startOnlineLeagueSimulation) return null;
+    return api.startOnlineLeagueSimulation(code, payload);
+  }
+
+  async function startOnlineLeagueRound(code) {
+    const api = await ensureOnlineApi();
+    if (!api.startOnlineLeagueRound) return null;
+    return api.startOnlineLeagueRound(code);
+  }
+
+  async function simulateAllOnlineLeagueRounds(code) {
+    const api = await ensureOnlineApi();
+    if (!api.simulateAllOnlineLeagueRounds) return null;
+    return api.simulateAllOnlineLeagueRounds(code);
+  }
+
+  async function updateOnlineSimulationSpeed(code, speed) {
+    const api = await ensureOnlineApi();
+    if (!api.updateOnlineSimulationSpeed) return null;
+    return api.updateOnlineSimulationSpeed(code, speed);
+  }
+
+  async function resetOnlineRoomToLobby(code) {
+    const api = await ensureOnlineApi();
+    if (!api.resetOnlineRoomToLobby) return null;
+    return api.resetOnlineRoomToLobby(code);
   }
 
   async function listLobbyRooms(filters = {}) {
@@ -4490,6 +4777,15 @@ function App() {
   function applyRemoteRoomState(room, isRemote = false) {
     if (!room) return;
 
+    const nextRevision = Number(room.stateRevision || 0);
+    const currentRevision = Number(onlineRoomRevisionRef.current || 0);
+    if (nextRevision > 0 && currentRevision > 0 && nextRevision < currentRevision) {
+      return;
+    }
+    if (nextRevision > 0) {
+      onlineRoomRevisionRef.current = Math.max(currentRevision, nextRevision);
+    }
+
     const activeParticipantId = myParticipantIdRef.current || localParticipantIdRef.current || localParticipantId;
 
     if (activeParticipantId && room.participants?.length) {
@@ -4524,20 +4820,19 @@ function App() {
     setOnlineLeagueResult(hydrateLeagueResultFromFirestore(room.leagueResult));
     setOnlineDuelResult(room.duelResult || null);
     setOnlineRevealedRounds(room.revealedRounds || 0);
-    setOnlineLiveRound(buildOnlineLiveRoundFromRoom(room));
+    const nextLiveRound = buildOnlineLiveRoundFromRoom(room);
+    setOnlineLiveRound((current) => {
+      if (!nextLiveRound) return null;
+      if (!current || current.round?.round !== nextLiveRound.round?.round) {
+        return nextLiveRound;
+      }
+
+      return {
+        ...nextLiveRound,
+        minute: Math.max(Number(current.minute || 0), Number(nextLiveRound.minute || 0)),
+      };
+    });
     setOnlineDuelLive(buildOnlineDuelLiveFromRoom(room));
-
-    const hydratedLeagueResult = hydrateLeagueResultFromFirestore(room.leagueResult);
-    const totalLeagueRounds = hydratedLeagueResult?.rounds?.length || 0;
-
-    if (
-      room.status === "league" &&
-      totalLeagueRounds > 0 &&
-      (room.revealedRounds || 0) >= totalLeagueRounds
-    ) {
-      clearActiveRoomCode();
-      setSavedRoomCode("");
-    }
 
     if (room.liveSpeed && !isOnlineHost) {
       liveSpeedRef.current = room.liveSpeed;
@@ -4553,7 +4848,9 @@ function App() {
         Boolean(room.participants?.find((p) => p.id === localId)?.isHost);
 
       if (amHostNow) {
-        pruneStaleParticipants(room.code).catch(console.error);
+        if (!onlineApiRef.current?.usesSocketPresence) {
+          pruneStaleParticipants(room.code).catch(console.error);
+        }
         if (room.liveSpeed) {
           syncHostLiveSpeedFromRoom(room);
         }
@@ -4611,11 +4908,18 @@ function App() {
       myParticipantIdRef.current = playerId;
       localParticipantIdRef.current = playerId;
       setLocalParticipantId(playerId);
+      rememberActiveRoomCode(room.code);
+      setSavedRoomCode(room.code);
+      autoResumeAttemptedRef.current = room.code;
       applyRemoteRoomState(room, true);
       if (room.hostId === playerId || room.participants?.some((entry) => entry.id === playerId && entry.isHost)) {
         syncHostLiveSpeedFromRoom(room);
       }
-      syncOnlineScreenWithRoom(room);
+      // Ao retomar manualmente, precisamos forçar a navegação para a tela
+      // correspondente ao estado atual da sala. A sincronização comum evita
+      // tirar o usuário das telas de configuração, mas isso fazia o botão
+      // "Retomar sala" permanecer no menu mesmo após recuperar a sessão.
+      setScreen(getOnlineScreenForRoom(room));
     } catch (error) {
       console.error(error);
       setResumeRoomFeedback("Não foi possível retomar a sala agora.");
@@ -4625,9 +4929,11 @@ function App() {
   }
 
   function dismissSavedOnlineRoom() {
-    clearActiveRoomCode();
+    const code = savedRoomCode || getRememberedRoomCode();
+    forgetRememberedRoom(code);
     setSavedRoomCode("");
     setResumeRoomFeedback("");
+    autoResumeAttemptedRef.current = "";
   }
 
   useEffect(() => {
@@ -4638,6 +4944,48 @@ function App() {
     ensureOnlineApi().catch(console.error);
     return undefined;
   }, [screen, isOnlineApiReady, isOnlineApiLoading]);
+
+  useEffect(() => {
+    if (screen !== "online-league" || !onlineLeagueResult?.humanTeams?.length) return;
+
+    const ownTeam = onlineLeagueResult.humanTeams.find(
+      (team) => team.ownerParticipantId === localParticipantId
+    );
+    const fallbackTeam = ownTeam || onlineLeagueResult.humanTeams[0];
+
+    setOnlinePitchTeamId((currentId) => {
+      const stillExists = onlineLeagueResult.humanTeams.some((team) => team.id === currentId);
+      return stillExists ? currentId : fallbackTeam?.id || "";
+    });
+  }, [screen, onlineLeagueResult, localParticipantId]);
+
+  useEffect(() => {
+    const resumableCode = savedRoomCode || getRememberedRoomCode();
+    if (
+      screen !== "online-home" ||
+      !resumableCode ||
+      onlineRoom ||
+      !isOnlineApiReady ||
+      isResumingOnlineRoom ||
+      autoResumeAttemptedRef.current === resumableCode
+    ) {
+      return undefined;
+    }
+
+    autoResumeAttemptedRef.current = resumableCode;
+    setSavedRoomCode(resumableCode);
+    const timer = window.setTimeout(() => {
+      resumeSavedOnlineRoom().catch?.(console.error);
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    screen,
+    savedRoomCode,
+    onlineRoom,
+    isOnlineApiReady,
+    isResumingOnlineRoom,
+  ]);
 
   useEffect(() => {
     if (!onlineRoom?.code || !isOnlineApiReady || !onlineApiRef.current) {
@@ -4665,6 +5013,10 @@ function App() {
       },
       (error) => {
         console.error(error);
+        setOnlineConnectionStatus("reconnecting");
+      },
+      (connection) => {
+        setOnlineConnectionStatus(connection?.status || "idle");
       }
     );
 
@@ -4675,7 +5027,9 @@ function App() {
   }, [onlineRoom?.code, isOnlineApiReady]);
 
   useEffect(() => {
-    // Always heartbeat with the id we used to join this specific room (stable across ensure calls).
+    if (onlineApiRef.current?.usesSocketPresence) return undefined;
+
+    // Firebase: mantém o heartbeat legado enquanto ele continuar selecionado como backend.
     const heartbeatParticipantId = myParticipantIdRef.current || localParticipantIdRef.current || localParticipantId;
     if (!onlineRoom?.code || !heartbeatParticipantId) return undefined;
 
@@ -4685,7 +5039,6 @@ function App() {
       } catch (error) {
         const code = error?.code || '';
         if (code === 'failed-precondition' || code === 'aborted' || code === 'unavailable') {
-          // transient contention from concurrent writes (normal in realtime), will retry on next interval
           return;
         }
         console.error(error);
@@ -4693,12 +5046,13 @@ function App() {
     };
 
     sendHeartbeat();
-    const heartbeatId = window.setInterval(sendHeartbeat, 30000); // heartbeat mais agressivo pra presença mais rápida no lobby
+    const heartbeatId = window.setInterval(sendHeartbeat, 30000);
 
     return () => window.clearInterval(heartbeatId);
-  }, [onlineRoom?.code, localParticipantId]);
+  }, [onlineRoom?.code, localParticipantId, isOnlineApiReady]);
 
   useEffect(() => {
+    if (onlineApiRef.current?.usesSocketPresence) return undefined;
     if (!isOnlineHost || !onlineRoom?.code) return undefined;
 
     const pruneId = window.setInterval(() => {
@@ -4709,13 +5063,14 @@ function App() {
         }
         console.error(error);
       });
-    }, 30000); // prune mais frequente também
+    }, 30000);
 
     return () => window.clearInterval(pruneId);
-  }, [isOnlineHost, onlineRoom?.code]);
+  }, [isOnlineHost, onlineRoom?.code, isOnlineApiReady]);
 
   useEffect(() => {
     if (!onlineRoom?.code || !localParticipantId) return undefined;
+    if (onlineApiRef.current?.leaveOnPageHide === false) return undefined;
 
     const handlePageHide = () => {
       const roomCode = onlineRoomRef.current?.code;
@@ -4729,7 +5084,7 @@ function App() {
     window.addEventListener("pagehide", handlePageHide);
 
     return () => window.removeEventListener("pagehide", handlePageHide);
-  }, [onlineRoom?.code, localParticipantId]);
+  }, [onlineRoom?.code, localParticipantId, isOnlineApiReady]);
 
   // Feedback leve quando o usuário vira host automaticamente (promoção por queda do anterior)
   useEffect(() => {
@@ -4745,15 +5100,35 @@ function App() {
   useEffect(() => {
     if (screen !== "online-matchmaking" || !isOnlineApiReady) return undefined;
 
-    // Cleanup esporádico de salas antigas (apenas ao entrar na tela + a cada 2 minutos)
-    cleanupOldRooms().catch(console.error);
+    const api = onlineApiRef.current;
+    const filters = {
+      onlineMode: matchmakingSetup.onlineMode,
+      difficulty:
+        matchmakingSetup.onlineMode === "league" ? matchmakingSetup.difficulty : null,
+    };
+
     refreshLobbyRooms().catch(console.error);
 
+    if (typeof api?.subscribeToLobby === "function") {
+      return api.subscribeToLobby(
+        filters,
+        (rooms) => {
+          setLobbyRooms(rooms);
+          setLobbyRoomsFeedback("");
+          setIsLoadingLobbyRooms(false);
+        },
+        (error) => {
+          console.error(error);
+          setLobbyRoomsFeedback("Não foi possível acompanhar as salas em tempo real.");
+        }
+      );
+    }
+
+    // Firebase legado: continua usando consultas periódicas enquanto estiver selecionado.
+    cleanupOldRooms().catch(console.error);
     const cleanupInterval = window.setInterval(() => {
       cleanupOldRooms().catch(console.error);
-    }, 120000); // 2 minutos
-
-    // Auto-refresh mais leve da lista (sem cleanup)
+    }, 120000);
     const refreshInterval = window.setInterval(() => {
       refreshLobbyRooms().catch(console.error);
     }, 20000);
@@ -4791,17 +5166,26 @@ function App() {
       return undefined;
     }
 
-    const roundStartedAt = onlineRoom.liveRound.roundStartedAt;
     const roundNumber = onlineRoom.liveRound.roundNumber;
 
     const tick = () => {
-      const minute = getLiveMinuteFromStartedAt(roundStartedAt, liveSpeedRef.current);
+      const room = onlineRoomRef.current;
+      if (
+        !room?.liveRound?.roundStartedAt ||
+        room.status !== "league" ||
+        room.liveRound.roundNumber !== roundNumber
+      ) {
+        return;
+      }
+
+      const minute = getLiveMinuteFromRoomSnapshot(room, room.liveRound, 90);
 
       setOnlineLiveRound((current) => {
         if (!current || current.round?.round !== roundNumber) return current;
-        if (current.minute === minute) return current;
+        const nextMinute = Math.max(Number(current.minute || 0), minute);
+        if (current.minute === nextMinute) return current;
 
-        return { ...current, minute };
+        return { ...current, minute: nextMinute };
       });
     };
 
@@ -4818,6 +5202,8 @@ function App() {
   ]);
 
   useEffect(() => {
+    if (onlineApiRef.current?.serverControlsLiveSimulation) return undefined;
+
     if (
       !isOnlineHost ||
       !onlineRoom?.code ||
@@ -4838,7 +5224,9 @@ function App() {
 
       const minute = getLiveMinuteFromStartedAt(
         room.liveRound.roundStartedAt,
-        liveSpeedRef.current
+        liveSpeedRef.current,
+        90,
+        room._serverClockOffset || 0
       );
 
       if (minute < 90) return;
@@ -4887,7 +5275,12 @@ function App() {
       if (!match) return;
 
       const endMinute = getDuelLiveEndMinute(match);
-      const minute = getLiveMinuteFromStartedAt(roundStartedAt, liveSpeedRef.current, endMinute);
+      const minute = getLiveMinuteFromStartedAt(
+        roundStartedAt,
+        liveSpeedRef.current,
+        endMinute,
+        onlineRoomRef.current?._serverClockOffset || 0
+      );
 
       setOnlineDuelLive((current) => {
         if (!current || current.matchIndex !== matchIndex) return current;
@@ -5169,6 +5562,8 @@ function App() {
     setOnlineLeagueResult(null);
     setOnlineRevealedRounds(0);
     setDismissedOnlineChampionModal(false);
+    onlineRoomRevisionRef.current = 0;
+    setOnlineConnectionStatus("idle");
     myParticipantIdRef.current = "";
     hasSeenSelfInRoomRef.current = false;
   }
@@ -5217,26 +5612,38 @@ function App() {
 
     if (!isOnlineHost) return;
 
-    await clearOnlineLeagueResult(onlineRoom.code);
-    await patchRoomDocument(onlineRoom.code, {
-      status: "lobby",
-      draftOrder: [],
-      draftState: null,
-      isDrawingOrder: false,
-      rollingParticipant: "",
-      leagueResult: null,
-      leagueResultStored: false,
-      duelResult: null,
-      revealedRounds: 0,
-      liveRound: null,
-      duelLive: null,
-    });
+    try {
+      const api = await ensureOnlineApi();
+      if (api.resetOnlineRoomToLobby) {
+        const updatedRoom = await resetOnlineRoomToLobby(onlineRoom.code);
+        if (updatedRoom) applyRemoteRoomState(updatedRoom, false);
+      } else {
+        await clearOnlineLeagueResult(onlineRoom.code);
+        await patchRoomDocument(onlineRoom.code, {
+          status: "lobby",
+          draftOrder: [],
+          draftState: null,
+          isDrawingOrder: false,
+          rollingParticipant: "",
+          leagueResult: null,
+          leagueResultStored: false,
+          duelResult: null,
+          revealedRounds: 0,
+          liveRound: null,
+          duelLive: null,
+        });
+      }
 
-    setOnlineLiveRound(null);
-    setOnlineDuelLive(null);
-    setOnlinePendingSelection(null);
-    setOnlinePickCountdown(null);
-    setDismissedOnlineChampionModal(false);
+      setOnlineLiveRound(null);
+      setOnlineDuelLive(null);
+      setOnlinePendingSelection(null);
+      setOnlinePickCountdown(null);
+      setDismissedOnlineChampionModal(false);
+      setScreen("online-lobby");
+    } catch (error) {
+      console.error(error);
+      window.alert("Não foi possível reiniciar a sala agora.");
+    }
   }
 
   function updateOnlineRoomConfig(field, value) {
@@ -5376,14 +5783,25 @@ function App() {
         return;
       }
 
-      const hasPassword = !!(room.config?.password && String(room.config.password).trim());
-      if (room.config?.isPrivate || hasPassword) {
-        const enteredPass = (joinRoomPassword || "").trim();
-        const correctPass = (room.config.password || "").trim();
-        if (!enteredPass || enteredPass !== correctPass) {
-          setJoinRoomFeedback("Senha incorreta. Esta é uma sala privada.");
-          return;
-        }
+      const hasClientVisiblePassword = !!(
+        room.config?.password && String(room.config.password).trim()
+      );
+      const isProtected = room.config?.isPrivate || hasClientVisiblePassword;
+      const enteredPass = (joinRoomPassword || "").trim();
+
+      if (isProtected && !enteredPass) {
+        setJoinRoomFeedback("Digite a senha para entrar nesta sala privada.");
+        return;
+      }
+
+      // Compatibilidade com o Firebase legado. Na Cloudflare, a senha nunca é enviada ao navegador
+      // e a validação acontece exclusivamente no servidor.
+      if (
+        hasClientVisiblePassword &&
+        enteredPass !== String(room.config.password || "").trim()
+      ) {
+        setJoinRoomFeedback("Senha incorreta. Esta é uma sala privada.");
+        return;
       }
 
       await ensureOnlineApi();
@@ -5404,7 +5822,7 @@ function App() {
       localParticipantIdRef.current = playerId;
       setLocalParticipantId(playerId);
 
-      await joinRoomDocument(normalizedCode, participant);
+      await joinRoomDocument(normalizedCode, participant, { password: enteredPass });
 
       rememberActiveRoomCode(normalizedCode);
       setSavedRoomCode(normalizedCode);
@@ -5559,9 +5977,15 @@ function App() {
 
     const { code: normalizedCode, room } = pendingPrivateLobbyRoom;
     const enteredPass = (lobbyJoinPassword || "").trim();
-    const correctPass = (room.config?.password || "").trim();
+    const clientVisiblePassword = String(room.config?.password || "").trim();
 
-    if (!enteredPass || enteredPass !== correctPass) {
+    if (!enteredPass) {
+      setLobbyRoomsFeedback("Digite a senha da sala.");
+      return;
+    }
+
+    // Somente o Firebase legado expõe a senha no documento. Na Cloudflare, o servidor valida.
+    if (clientVisiblePassword && enteredPass !== clientVisiblePassword) {
       setLobbyRoomsFeedback("Senha incorreta. Tente novamente.");
       return;
     }
@@ -5602,7 +6026,7 @@ function App() {
       localParticipantIdRef.current = playerId;
       setLocalParticipantId(playerId);
 
-      await joinRoomDocument(normalizedCode, participant);
+      await joinRoomDocument(normalizedCode, participant, { password: enteredPass });
       rememberActiveRoomCode(normalizedCode);
       setSavedRoomCode(normalizedCode);
       applyRemoteRoomState({
@@ -5769,7 +6193,7 @@ function App() {
       myParticipantIdRef.current = effectiveId;
       localParticipantIdRef.current = effectiveId;
       setLocalParticipantId(effectiveId);
-      setSavedRoomCode(roomCode);
+      setSavedRoomCode(created?.code || roomCode);
       applyRemoteRoomState(created || room);
       syncHostLiveSpeedFromRoom(created || room);
       setScreen("online-lobby");
@@ -5807,6 +6231,13 @@ function App() {
 
   async function startOnlineOrderScreen() {
     if (!isOnlineHost || !onlineRoom || onlineRoom.participants.length < 2) return;
+
+    if (onlineApiRef.current?.supportsGameFlow === false) {
+      window.alert(
+        "O lobby já está conectado à Cloudflare. O sorteio, draft e simulação serão ligados na próxima etapa."
+      );
+      return;
+    }
 
     await patchRoomDocument(onlineRoom.code, {
       status: "order",
@@ -6089,20 +6520,41 @@ function App() {
 
   async function startOnlineBrazilianLeague() {
     if (!isOnlineHost || !onlineRoom || !onlineDraftState?.isComplete) return;
+
     setIsStartingOnlineLeague(true);
 
-    const result = simulateOnlineBrazilianLeague(
-      onlineRoom,
-      onlineDraftOrder,
-      onlineDraftState.lineupsMap
-    );
-
-    const slimResult = slimLeagueResultForFirestore(result);
-
     try {
-      // Re-ensure and double-check we are still the current host before privileged writes.
-      // This protects against host promotion races or any id drift in long sessions.
-      await ensureOnlineApi();
+      const api = await ensureOnlineApi();
+
+      if (api.supportsLeagueSimulation === false) {
+        window.alert("A simulação do Brasileirão ainda não está disponível neste backend.");
+        return;
+      }
+
+      if (api.startOnlineLeagueSimulation) {
+        const databaseTeamsNeeded = Math.max(0, 20 - onlineDraftOrder.length);
+        const databaseTeams = buildOnlineLeagueDatabasePayload(databaseTeamsNeeded);
+        const updatedRoom = await startOnlineLeagueSimulation(onlineRoom.code, {
+          databaseTeams,
+          liveSpeed: onlineLiveSpeed || "normal",
+        });
+
+        if (updatedRoom) {
+          applyRemoteRoomState(updatedRoom, false);
+          syncOnlineScreenWithRoom(updatedRoom);
+        }
+        setDismissedOnlineChampionModal(false);
+        setScreen("online-league");
+        return;
+      }
+
+      const result = simulateOnlineBrazilianLeague(
+        onlineRoom,
+        onlineDraftOrder,
+        onlineDraftState.lineupsMap
+      );
+      const slimResult = slimLeagueResultForFirestore(result);
+
       const currentId = localParticipantIdRef.current || localParticipantId;
       const amStillHost = onlineRoom.hostId === currentId ||
         Boolean(onlineRoom.participants?.find((p) => p.id === currentId)?.isHost);
@@ -6112,8 +6564,7 @@ function App() {
       }
 
       await withRetry(() => saveOnlineLeagueResult(onlineRoom.code, slimResult));
-
-      const leagueUpdates = {
+      await withRetry(() => patchRoomDocument(onlineRoom.code, {
         status: "league",
         leagueResultStored: true,
         leagueResult: null,
@@ -6122,16 +6573,8 @@ function App() {
         liveRound: null,
         liveSpeed: onlineLiveSpeed || "normal",
         duelLive: null,
-      };
-      // remove any undefined (Firestore hates undefined)
-      const cleanLeagueUpdates = Object.fromEntries(
-        Object.entries(leagueUpdates).filter(([, v]) => v !== undefined)
-      );
+      }));
 
-      await withRetry(() => patchRoomDocument(onlineRoom.code, cleanLeagueUpdates));
-
-      // Success: set local result immediately for the starter (full result) so UI shows right away.
-      // Other players will receive via the leagueData subdoc + subscription.
       setDismissedOnlineChampionModal(false);
       setOnlineLeagueResult(result);
       setScreen("online-league");
@@ -6140,9 +6583,7 @@ function App() {
       const detail = error?.code || error?.message || String(error);
       window.alert(
         "Não foi possível sincronizar o Brasileirão com os outros jogadores.\n\n" +
-        "Detalhe técnico: " + detail + "\n\n" +
-        "Possíveis causas: sua sessão de autenticação anônima mudou (recarregue a página) ou o hostId no servidor não bate mais com seu UID atual. " +
-        "Tente sair da sala e entrar novamente, ou recarregar ambos os navegadores."
+        "Detalhe técnico: " + detail
       );
     } finally {
       setIsStartingOnlineLeague(false);
@@ -6158,29 +6599,26 @@ function App() {
 
     const room = onlineRoomRef.current;
     if (room) {
-      onlineRoomRef.current = {
-        ...room,
-        liveSpeed: speed,
-      };
+      onlineRoomRef.current = { ...room, liveSpeed: speed };
     }
-
     if (!onlineRoom?.code) return;
 
     try {
+      const api = await ensureOnlineApi();
+      if (api.updateOnlineSimulationSpeed) {
+        const updatedRoom = await updateOnlineSimulationSpeed(onlineRoom.code, speed);
+        if (updatedRoom) applyRemoteRoomState(updatedRoom, false);
+        return;
+      }
+
       const updates = { liveSpeed: speed };
-
       if (room?.liveRound?.roundStartedAt && room.status === "league") {
-        const currentMinute = getLiveMinuteFromStartedAt(
-          room.liveRound.roundStartedAt,
-          previousSpeed
-        );
-
+        const currentMinute = getLiveMinuteFromStartedAt(room.liveRound.roundStartedAt, previousSpeed);
         updates.liveRound = {
           ...room.liveRound,
           roundStartedAt: Date.now() - currentMinute * getOnlineLiveSpeedInterval(speed),
         };
       }
-
       if (room?.duelLive?.roundStartedAt && room.status === "duel" && !room.duelLive.isFinished) {
         const match = room.duelResult?.matches?.[room.duelLive.matchIndex];
         const endMinute = match ? getDuelLiveEndMinute(match) : 90;
@@ -6189,13 +6627,11 @@ function App() {
           previousSpeed,
           endMinute
         );
-
         updates.duelLive = {
           ...room.duelLive,
           roundStartedAt: Date.now() - currentMinute * getOnlineLiveSpeedInterval(speed),
         };
       }
-
       await patchRoomDocument(onlineRoom.code, updates);
     } catch (error) {
       console.error(error);
@@ -6211,6 +6647,13 @@ function App() {
     if (!round) return;
 
     try {
+      const api = await ensureOnlineApi();
+      if (api.startOnlineLeagueRound) {
+        const updatedRoom = await startOnlineLeagueRound(onlineRoom.code);
+        if (updatedRoom) applyRemoteRoomState(updatedRoom, false);
+        return;
+      }
+
       await patchRoomDocument(onlineRoom.code, {
         liveRound: {
           roundNumber: round.round,
@@ -6220,7 +6663,21 @@ function App() {
       });
     } catch (error) {
       console.error(error);
-      window.alert("Não foi possível iniciar a rodada ao vivo.");
+
+      // Se o cliente estava atrasado, buscamos o snapshot autoritativo em vez
+      // de deixá-lo travado na rodada anterior.
+      try {
+        const latestRoom = await fetchRoomByCode(onlineRoom.code);
+        if (latestRoom) {
+          applyRemoteRoomState(latestRoom, true);
+          syncOnlineScreenWithRoom(latestRoom);
+          return;
+        }
+      } catch (syncError) {
+        console.error(syncError);
+      }
+
+      window.alert("Não foi possível iniciar a rodada agora. A sala tentará sincronizar novamente.");
     }
   }
 
@@ -6228,6 +6685,13 @@ function App() {
     if (!isOnlineHost || !onlineRoom || !onlineLeagueResult) return;
 
     try {
+      const api = await ensureOnlineApi();
+      if (api.simulateAllOnlineLeagueRounds) {
+        const updatedRoom = await simulateAllOnlineLeagueRounds(onlineRoom.code);
+        if (updatedRoom) applyRemoteRoomState(updatedRoom, false);
+        return;
+      }
+
       await patchRoomDocument(onlineRoom.code, {
         liveRound: null,
         revealedRounds: onlineLeagueResult.rounds.length,
@@ -6239,6 +6703,13 @@ function App() {
 
   async function startOnlineDuel() {
     if (!isOnlineHost || !onlineRoom || !onlineDraftState?.isComplete) return;
+
+    if (onlineApiRef.current?.supportsDuelSimulation === false) {
+      window.alert(
+        "O Brasileirão já está no servidor da Cloudflare. A simulação do duelo será ligada na próxima etapa."
+      );
+      return;
+    }
 
     const result = simulateOnlineDuel(
       onlineRoom,
@@ -6873,7 +7344,7 @@ ${lineupText}`;
               Jogar Online
             </h1>
             <p className="mt-4 max-w-2xl text-base font-bold leading-relaxed text-slate-600">
-              Crie uma sala para jogar com amigos, entre por código ou procure uma partida aleatória. As salas ficam sincronizadas em tempo real pelo Firebase.
+              Crie uma sala para jogar com amigos, entre por código ou procure uma partida aleatória. As salas ficam sincronizadas em tempo real pelo novo servidor online.
             </p>
 
             {savedRoomCode ? (
@@ -8169,7 +8640,11 @@ ${lineupText}`;
       picksNeededThisTurn - onlineDraftState.picksMadeThisTurn
     );
     const roundIndex = Math.floor(onlineDraftState.currentTurnIndex / onlineDraftOrder.length) + 1;
-    const revealOnlineOveralls = onlineRoom.config.difficulty !== "expert";
+    const isExpertDraftCurrentlyHidingOveralls =
+      onlineRoom.config.difficulty === "expert" &&
+      onlineRoom.status === "draft" &&
+      !onlineDraftState.isComplete;
+    const revealOnlineOveralls = !isExpertDraftCurrentlyHidingOveralls;
     const isOnlineTeamDraft = onlineRoom.config.draftType === "teams";
     const currentTeamOption = onlineDraftState.currentTeamOption;
     const currentLineupSummary = getOnlineLineupSummary(currentLineup, currentFormation);
@@ -8198,7 +8673,12 @@ ${lineupText}`;
 
             <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
               <div className="rounded-2xl border border-slate-900/10 bg-white/75 px-4 py-2 text-sm font-black text-slate-700">
-                {onlineRoom.roomName} · {onlineRoom.code}
+                <span>{onlineRoom.roomName} · {onlineRoom.code}</span>
+                {onlineConnectionStatus !== "connected" && onlineConnectionStatus !== "idle" ? (
+                  <span className="ml-2 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700">
+                    {onlineConnectionStatus === "syncing" ? "Sincronizando" : "Reconectando"}
+                  </span>
+                ) : null}
               </div>
               {renderExitOnlineRoomButton()}
             </div>
@@ -8281,9 +8761,10 @@ ${lineupText}`;
                             {participantSummary.isComplete ? "Completo" : "Parcial"}
                           </span>
                         </div>
+                        {/* O modo especialista esconde os números somente enquanto o draft está em andamento. */}
                         <OnlineTeamSummaryStats
                           summary={participantSummary}
-                          revealValues={revealOnlineOveralls}
+                          revealValues
                         />
                       </div>
 
@@ -8298,7 +8779,7 @@ ${lineupText}`;
                             >
                               <KitBallIcon
                                 clubId={item.team.clubId}
-                                overall={revealOnlineOveralls ? item.player.ovr : "?"}
+                                overall={item.player.ovr}
                               />
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-black">{item.player.name}</p>
@@ -8949,7 +9430,28 @@ ${lineupText}`;
       revealedRounds: onlineRevealedRounds,
       liveRound: onlineLiveRound?.round || null,
       liveMinute: onlineLiveRound?.minute || 0,
+      baseLeaderboards: onlineLeagueResult.leaderboards || null,
     });
+    const ownOnlinePitchTeam = onlineLeagueResult.humanTeams.find(
+      (team) => team.ownerParticipantId === localParticipantId
+    );
+    const selectedOnlinePitchTeam = onlineLeagueResult.humanTeams.find(
+      (team) => team.id === onlinePitchTeamId
+    ) || ownOnlinePitchTeam || onlineLeagueResult.humanTeams[0] || null;
+    const selectedOnlinePitchFormation = selectedOnlinePitchTeam
+      ? getFormationById(selectedOnlinePitchTeam.formationName || selectedOnlinePitchTeam.era)
+      : formations[0];
+    const selectedOnlinePitchSummary = selectedOnlinePitchTeam
+      ? getOnlineLineupSummary(selectedOnlinePitchTeam.lineup || [], selectedOnlinePitchFormation)
+      : null;
+    const selectedOnlinePitchStats = selectedOnlinePitchTeam
+      ? getOnlineTeamPitchStats({
+          leagueResult: onlineLeagueResult,
+          team: selectedOnlinePitchTeam,
+          liveRound: onlineLiveRound?.round || null,
+          liveMinute: onlineLiveRound?.minute || 0,
+        })
+      : {};
 
     return (
       <main className={`min-h-screen bg-[#f7f0df] text-slate-950 ${themeClass}`}>
@@ -9288,6 +9790,78 @@ ${lineupText}`;
                   <p className="text-sm font-bold text-slate-500">
                     Clique em “Iniciar rodada 1” para começar a simulação ao vivo.
                   </p>
+                </div>
+              )}
+
+              {selectedOnlinePitchTeam && selectedOnlinePitchFormation && (
+                <div className="rounded-[2rem] border border-slate-900/10 bg-white/85 p-4 shadow-[0_16px_45px_rgba(15,23,42,0.08)] sm:p-5">
+                  <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                        Escalação e desempenho
+                      </p>
+                      <h2 className="mt-1 text-2xl font-black text-slate-950">
+                        {selectedOnlinePitchTeam.label}
+                      </h2>
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        {selectedOnlinePitchTeam.ownerParticipantId === localParticipantId
+                          ? `Seu time · ${selectedOnlinePitchFormation.name}`
+                          : `Player: ${selectedOnlinePitchTeam.playerName || "Jogador"} · ${selectedOnlinePitchFormation.name}`}
+                      </p>
+                    </div>
+
+                    <label className="block w-full lg:w-[320px]">
+                      <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                        Visualizar time
+                      </span>
+                      <select
+                        value={selectedOnlinePitchTeam.id}
+                        onChange={(event) => setOnlinePitchTeamId(event.target.value)}
+                        className="w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-200/45"
+                      >
+                        {onlineLeagueResult.humanTeams.map((team) => (
+                          <option key={`pitch-team-${team.id}`} value={team.id}>
+                            {team.label} — {team.playerName || "Jogador"}
+                            {team.ownerParticipantId === localParticipantId ? " (Você)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  {selectedOnlinePitchSummary && (
+                    <div className="mb-4 grid grid-cols-4 gap-2">
+                      {[
+                        ["DEF", selectedOnlinePitchSummary.defense],
+                        ["MEI", selectedOnlinePitchSummary.midfield],
+                        ["ATA", selectedOnlinePitchSummary.attack],
+                        ["GER", selectedOnlinePitchSummary.overall],
+                      ].map(([label, value]) => (
+                        <div
+                          key={`pitch-summary-${label}`}
+                          className="rounded-2xl border border-slate-900/10 bg-slate-50 px-2 py-2 text-center sm:px-3 sm:py-3"
+                        >
+                          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 sm:text-[10px]">
+                            {label}
+                          </p>
+                          <p className="mt-0.5 text-lg font-black text-slate-950 sm:text-2xl">
+                            {value ?? "—"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <OnlineSeasonPitch
+                    formation={selectedOnlinePitchFormation}
+                    lineup={selectedOnlinePitchTeam.lineup || []}
+                    playerStats={selectedOnlinePitchStats}
+                  />
+
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    <span>Número antes do ícone: 8 ⚽ 4 🅰️</span>
+                    <span>A nota exibida é a média no campeonato</span>
+                  </div>
                 </div>
               )}
 

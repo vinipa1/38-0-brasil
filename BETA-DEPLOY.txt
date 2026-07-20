@@ -1,0 +1,21 @@
+38-0 BRASIL — BETA ONLINE
+
+ALTERAÇÕES DESTA VERSÃO
+- Salas deixam o lobby imediatamente ao iniciar sorteio, draft ou campeonato.
+- Salas em espera sem nenhum participante conectado somem do lobby imediatamente.
+- A sala permanece recuperável por 2 minutos para reconexão.
+- Se ninguém voltar nesse período, o Durable Object apaga a sala e seus dados.
+- Não existe limite artificial para a quantidade de salas exibidas no lobby.
+- Salas cheias não aparecem como disponíveis.
+
+ORDEM DO DEPLOY
+1. cd worker
+2. npm run check
+3. npm run deploy
+4. cd ..
+5. npm run build
+6. Enviar o projeto para a Vercel / fazer git push conforme o fluxo atual.
+
+VARIÁVEIS DA VERCEL
+VITE_ONLINE_BACKEND=cloudflare
+VITE_ONLINE_API_URL=https://38-0-brasil-online.vinipa1313.workers.dev

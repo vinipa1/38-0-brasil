@@ -1,0 +1,61 @@
+38-0 BRASIL — ETAPA 2 DO NOVO MODO ONLINE
+
+OBJETIVO
+Transformar o Worker de teste em um servidor real de lobby, ainda separado do frontend principal.
+
+ESTA ETAPA JÁ POSSUI
+- criação de sala com código automático;
+- sala pública ou privada;
+- senha validada no servidor e armazenada com hash;
+- entrada por código;
+- limite de participantes;
+- lista pública de salas em tempo real;
+- host da sala;
+- transferência automática do host quando ele sai;
+- atualização do nome do jogador e do time;
+- presença por WebSocket, sem heartbeat no Firebase;
+- período de 2 minutos para reconexão;
+- exclusão automática quando a sala fica vazia;
+- encerramento da sala pelo host;
+- WebSocket Hibernation;
+- ticket curto e descartável para abrir o WebSocket.
+
+IMPORTANTE
+- O site principal e o Firebase ainda NÃO foram alterados.
+- A tela desta etapa é somente um painel de teste do backend.
+- O endereço público do jogo continua o mesmo.
+
+SUBSTITUIÇÃO
+Substitua a pasta worker atual pela pasta desta etapa ou substitua individualmente:
+- worker/src/index.js
+- worker/src/room.js
+- worker/src/lobby.js
+- worker/src/utils.js
+- worker/wrangler.jsonc
+- worker/package.json
+- worker/LEIA-ME.txt
+
+COMANDOS
+1. Abra o terminal na pasta worker.
+2. npm install
+3. npm run check
+4. npm run dev
+
+TESTE LOCAL
+- Abra http://127.0.0.1:8787
+- Crie uma sala em uma aba.
+- Copie o código.
+- Abra outra aba ou janela anônima e entre pelo código.
+- Confirme que os dois participantes aparecem imediatamente.
+- Altere um nome/time.
+- Faça o host sair e confirme que o convidado vira host.
+
+PUBLICAÇÃO
+Após o teste local:
+1. Pare o servidor com Ctrl+C.
+2. npm run deploy
+3. Abra a mesma URL workers.dev usada na Etapa 1.
+4. Repita o teste em duas abas ou dois aparelhos.
+
+OBSERVAÇÃO SOBRE A MIGRAÇÃO
+O arquivo wrangler.jsonc mantém a migração v1 da classe de salas e adiciona a v2 para o novo diretório de lobby. Não remova a migração v1.

@@ -1,0 +1,58 @@
+38-0 BRASIL — ITEM 2: CAMPINHO, GOLS, ASSISTÊNCIAS E NOTAS
+
+O QUE FOI IMPLEMENTADO
+- Nova seção "Escalação e desempenho" abaixo dos jogos da rodada.
+- O campinho reutiliza o visual do draft.
+- O seu time abre por padrão.
+- Um seletor permite visualizar os times dos outros participantes humanos.
+- Cada jogador mostra:
+  - overall dentro da bolinha;
+  - nome;
+  - nota média colorida;
+  - gols e assistências no formato: 8 ⚽ 4 🅰️.
+- Sem reservas, pois o draft possui somente os 11 titulares.
+- Gols e assistências são atualizados ao vivo.
+- A nota média é atualizada ao fim de cada rodada.
+
+CORES DAS NOTAS
+- 3.0 até 5.9: vermelho
+- 6.0 até 6.4: laranja
+- 6.5 até 6.9: amarelo
+- 7.0 até 7.9: verde
+- 8.0 até 8.9: azul-claro/ciano
+- 9.0 até 10.0: azul forte
+
+ARQUIVOS PARA SUBSTITUIR
+1. src/App.jsx
+2. worker/src/league.js
+3. worker/src/room.js
+
+IMPORTANTE
+Esta alteração mexe tanto no site quanto no Worker da Cloudflare. Não basta publicar somente o frontend.
+
+ORDEM RECOMENDADA
+1. Faça backup dos três arquivos atuais.
+2. Substitua os três arquivos pelos arquivos deste pacote.
+3. Publique o Worker:
+
+   cd worker
+   npm install
+   npx wrangler deploy
+
+4. Volte para a pasta principal e gere o site:
+
+   cd ..
+   npm install
+   npm run build
+
+5. Publique a pasta dist no mesmo processo que você já usa para o site.
+
+A pasta dist deste pacote já foi gerada e validada, caso você prefira publicar diretamente.
+
+TESTES REALIZADOS
+- Build de produção do Vite: aprovado.
+- Dry-run do Cloudflare Wrangler: aprovado.
+- Teste da simulação com 20 times, 38 rodadas, eventos, gols, assistências e notas: aprovado.
+
+SALAS JÁ EM ANDAMENTO
+Para que as médias contem desde a primeira rodada, o ideal é testar em um Brasileirão novo criado depois da atualização. Uma sala que já tenha rodadas concluídas antes da atualização não possui as notas antigas armazenadas.

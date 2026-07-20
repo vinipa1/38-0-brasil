@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "38-0-brasil-online",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-01",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOMS",
+        "class_name": "RoomDurableObject"
+      },
+      {
+        "name": "LOBBY",
+        "class_name": "LobbyDirectoryDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RoomDurableObject"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["LobbyDirectoryDurableObject"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
